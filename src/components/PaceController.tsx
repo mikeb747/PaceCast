@@ -227,9 +227,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   const currentRsc = encodeRscPacket(speed);
 
   return (
-    <div className="w-full max-w-lg mx-auto flex-1 flex flex-col justify-center py-2 sm:py-4 px-3 sm:px-6 space-y-3.5">
+    <div className="w-full max-w-xl mx-auto flex-1 flex flex-col justify-center py-1.5 sm:py-3 px-1 sm:px-2 space-y-2.5 sm:space-y-3">
       {/* Top Header */}
-      <header className="flex items-center justify-between pb-0.5">
+      <header className="flex items-center justify-between pb-0.5 px-0.5">
           {/* Logo & Brand: Clean PaceCast title */}
           <div>
             <h1 className="text-2xl font-black tracking-tight text-white">
@@ -297,7 +297,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
 
         {/* Current Pace & Speed Card */}
         <section
-          className="bg-[#222527] border border-[#2e3235] rounded-2xl p-4 space-y-3 shadow-inner"
+          className="bg-[#222527] border border-[#2e3235] rounded-2xl p-3 sm:p-4 space-y-2.5 sm:space-y-3 shadow-inner"
           aria-label="Current pace and speed controller"
         >
           {/* Dual Metrics: Speed & Pace */}
@@ -329,11 +329,11 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             </div>
           </div>
 
-          {/* Adjuster Buttons: Brutalist 3D Tactile Buttons */}
+          {/* Adjuster Buttons: Brutalist 3D Tactile Buttons (20% taller: h-[62px]) */}
           <div className="flex items-center justify-between gap-3 pt-0.5">
             {/* Decrement Button */}
             <button
-              className="btn-3d-neutral flex-1 h-13 rounded-xl flex items-center justify-center text-3xl font-bold cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+              className="btn-3d-neutral flex-1 h-[62px] rounded-xl flex items-center justify-center text-3xl font-bold cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               aria-label="Decrease speed"
               onPointerDown={() => startHold(-1)}
               onPointerUp={stopHold}
@@ -351,9 +351,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
               <span className="text-[9px] text-neutral-400 whitespace-nowrap">Hold for 0.5</span>
             </div>
 
-            {/* Increment Button (Mint Green 3D) */}
+            {/* Increment Button (Mint Green 3D, 20% taller: h-[62px]) */}
             <button
-              className="btn-3d-mint flex-1 h-13 rounded-xl flex items-center justify-center text-3xl font-black cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+              className="btn-3d-mint flex-1 h-[62px] rounded-xl flex items-center justify-center text-3xl font-black cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               aria-label="Increase speed"
               onPointerDown={() => startHold(1)}
               onPointerUp={stopHold}
@@ -367,10 +367,10 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           </div>
         </section>
 
-        {/* Quick Speed Presets Bar */}
-        <section className="space-y-2">
+        {/* Quick Speed Presets Bar (20% taller buttons: h-[44px]) */}
+        <section className="space-y-1.5" aria-labelledby="presets-heading">
           <div className="flex items-center justify-between text-xs font-bold text-neutral-400 uppercase tracking-wider px-1">
-            <span className="flex items-center gap-1.5">
+            <span id="presets-heading" className="flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-emerald-400" />
               Presets
             </span>
@@ -378,36 +378,36 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           </div>
           <div className="grid grid-cols-6 gap-1.5">
             {SPEED_PRESETS.map((p) => {
-              const isSelected = speed === p;
+              const isSelected = Math.abs(speed - p) < 0.05;
               return (
                 <button
                   key={p}
                   onClick={() => choosePreset(p)}
-                  className={`h-9 rounded-lg font-mono text-xs font-bold border transition cursor-pointer ${
+                  className={`h-[44px] rounded-lg font-mono text-xs sm:text-sm font-bold border transition cursor-pointer flex items-center justify-center ${
                     isSelected
                       ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_8px_rgba(74,222,128,0.3)]'
                       : 'bg-[#222527] text-neutral-300 border-[#2e3235] hover:border-neutral-500 hover:text-white'
                   }`}
                   aria-label={`Set speed to ${p} km/h`}
                 >
-                  {p}
+                  {p % 1 === 0 ? p.toFixed(0) : p.toFixed(1)}
                 </button>
               );
             })}
           </div>
         </section>
 
-        {/* Previous Pace Card & Keypad Display Row */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Previous Pace Card & Keypad Display Row (20% taller: h-[62px]) */}
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
           {/* Previous Pace Swap Card */}
           <button
             onClick={recallPrevious}
-            className="flex items-center justify-between p-3.5 rounded-xl bg-[#222527] border border-[#2e3235] hover:border-emerald-500/40 transition group cursor-pointer text-left"
+            className="h-[62px] flex items-center justify-between px-3 sm:px-3.5 rounded-xl bg-[#222527] border border-[#2e3235] hover:border-emerald-500/40 transition group cursor-pointer text-left"
             title="Tap to swap with Current Pace (Interval Mode)"
             aria-label={`Swap with previous pace of ${previousSpeed.toFixed(1)} km/h`}
           >
             <div>
-              <span className="text-[10px] font-bold text-neutral-400 block uppercase tracking-wider">
+              <span className="text-[9px] sm:text-[10px] font-bold text-neutral-400 block uppercase tracking-wider">
                 Previous pace
               </span>
               <div className="flex items-baseline gap-1 font-mono mt-0.5">
@@ -423,8 +423,8 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           </button>
 
           {/* Keypad Display Box */}
-          <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#141517] border border-[#2e3235] text-right font-mono">
-            <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-sans">
+          <div className="h-[62px] flex items-center justify-between px-3 sm:px-3.5 rounded-xl bg-[#141517] border border-[#2e3235] text-right font-mono">
+            <span className="text-[9px] sm:text-[10px] text-neutral-500 uppercase tracking-wider font-sans">
               Typed
             </span>
             <div className="flex items-baseline gap-1">
@@ -441,35 +441,35 @@ export const PaceController: React.FC<PaceControllerProps> = ({
         </div>
 
         {/* Exact Pace Numpad */}
-        <section className="space-y-2.5" aria-label="Exact pace numpad">
-          {/* 3x4 Grid */}
+        <section className="space-y-2" aria-label="Exact pace numpad">
+          {/* 3x4 Grid (20% taller buttons: h-[58px]) */}
           <div className="grid grid-cols-3 gap-2">
             {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0'].map((digit) => (
               <button
                 key={digit}
                 onClick={() => pressKey(digit)}
-                className="btn-3d-keypad h-12 rounded-xl text-lg font-bold font-mono cursor-pointer"
+                className="btn-3d-keypad h-[58px] rounded-xl text-lg sm:text-xl font-bold font-mono cursor-pointer"
                 aria-label={`Keypad digit ${digit}`}
               >
                 {digit}
               </button>
             ))}
 
-            {/* Backspace Key */}
+            {/* Backspace Key (20% taller: h-[58px]) */}
             <button
               onClick={() => pressKey('backspace')}
-              className="btn-3d-keypad h-12 rounded-xl flex items-center justify-center text-neutral-300 hover:text-red-400 cursor-pointer"
+              className="btn-3d-keypad h-[58px] rounded-xl flex items-center justify-center text-neutral-300 hover:text-red-400 cursor-pointer"
               aria-label="Delete last digit"
             >
               <Delete className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Enter Pace Button */}
+          {/* Enter Pace Button (20% taller: h-[58px]) */}
           <button
             onClick={applyKeypad}
             disabled={keypadValue === ''}
-            className={`w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 text-sm uppercase tracking-wider transition cursor-pointer border ${
+            className={`w-full h-[58px] rounded-xl font-bold flex items-center justify-center gap-2 text-sm uppercase tracking-wider transition cursor-pointer border ${
               keypadValue !== ''
                 ? 'bg-[#4ade80] text-[#052e16] border-[#16a34a] border-b-4 hover:brightness-105 active:translate-y-1 active:border-b-0'
                 : 'bg-[#222527] text-neutral-500 border-[#2e3235] cursor-not-allowed opacity-60'

@@ -17,10 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,7 +29,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pacecast.app.ble.BleRscServer
@@ -50,7 +46,6 @@ fun PaceCastScreen(
 ) {
     val isAdvertising by bleServer.isAdvertising.collectAsState()
     val deviceCount by bleServer.subscribedDeviceCount.collectAsState()
-    val lastHex by bleServer.lastPayloadHex.collectAsState()
 
     var currentSpeed by remember { mutableFloatStateOf(16.8f) }
     var previousSpeed by remember { mutableFloatStateOf(6.0f) }
@@ -92,6 +87,15 @@ fun PaceCastScreen(
         previousSpeed = temp
     }
 
+    fun selectPreset(preset: Float) {
+        debounceJob?.cancel()
+        isAdjustmentBurstActive = false
+
+        previousSpeed = currentSpeed
+        currentSpeed = preset.coerceIn(0.0f, 30.0f)
+        keypadBuffer = ""
+    }
+
     fun submitKeypadPace() {
         debounceJob?.cancel()
         isAdjustmentBurstActive = false
@@ -124,21 +128,22 @@ fun PaceCastScreen(
         }
     }
 
+    // 75% reduction to screen edge spacing: horizontal 4.dp, vertical 6.dp
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(CharcoalCard)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(
             modifier = Modifier
-                .widthIn(max = 480.dp)
+                .widthIn(max = 520.dp)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Header with PaceCast title & interactive status pill
+            // Header with clean PaceCast title & interactive status pill
             HeaderSection(
                 isAdvertising = isAdvertising,
                 deviceCount = deviceCount,
@@ -151,7 +156,13 @@ fun PaceCastScreen(
                 onAdjust = { delta -> applyAdjustment(delta) }
             )
 
-            // Previous Pace Card & Keypad Display Row
+            // Speed Presets Section (prominently visible, 20% taller buttons)
+            PresetsSection(
+                currentSpeed = currentSpeed,
+                onSelectPreset = { preset -> selectPreset(preset) }
+            )
+
+            // Previous Pace Card & Keypad Display Row (20% taller: 62.dp)
             RecallAndDisplayRow(
                 previousSpeed = previousSpeed,
                 keypadBuffer = keypadBuffer,
@@ -159,7 +170,7 @@ fun PaceCastScreen(
                 onRecall = { swapPaces() }
             )
 
-            // Exact Pace Numpad Section
+            // Exact Pace Numpad Section (20% taller: keypad 58.dp, enter 62.dp)
             KeypadSection(
                 keypadBuffer = keypadBuffer,
                 onKeyPress = { key -> handleKeyPress(key) },
@@ -176,11 +187,13 @@ private fun HeaderSection(
     onToggle: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Title (Clean PaceCast, no icon or subtitle)
+        // Title (Clean PaceCast)
         Text(
             text = "PaceCast",
             color = TextPrimary,
@@ -237,8 +250,6 @@ private fun CurrentPaceCard(
     speedKmh: Float,
     onAdjust: (Float) -> Unit
 ) {
-    val coroutineScope = rememberCoroutineScope()
-
     fun calculatePace(speed: Float): String {
         if (speed <= 0f) return "--:--"
         val totalSecs = (3600f / speed).roundToInt()
@@ -250,12 +261,12 @@ private fun CurrentPaceCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(CharcoalSurface)
-            .border(1.dp, CharcoalBorder, RoundedCornerShape(18.dp))
-            .padding(18.dp),
+            .border(1.dp, CharcoalBorder, RoundedCornerShape(16.dp))
+            .padding(14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Speed & Pace Readouts
         Row(
@@ -267,7 +278,7 @@ private fun CurrentPaceCard(
                     Text(
                         text = String.format(Locale.US, "%.1f", speedKmh),
                         color = TextPrimary,
-                        fontSize = 42.sp,
+                        fontSize = 40.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace
                     )
@@ -275,9 +286,9 @@ private fun CurrentPaceCard(
                     Text(
                         text = "km/h",
                         color = TextSecondary,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(bottom = 6.dp)
+                        modifier = Modifier.padding(bottom = 5.dp)
                     )
                 }
                 Text(
@@ -292,7 +303,7 @@ private fun CurrentPaceCard(
             Box(
                 modifier = Modifier
                     .width(1.dp)
-                    .height(48.dp)
+                    .height(44.dp)
                     .background(CharcoalBorder)
             )
 
@@ -301,7 +312,7 @@ private fun CurrentPaceCard(
                     Text(
                         text = calculatePace(speedKmh),
                         color = MintGreen,
-                        fontSize = 42.sp,
+                        fontSize = 40.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace
                     )
@@ -309,9 +320,9 @@ private fun CurrentPaceCard(
                     Text(
                         text = "/km",
                         color = TextSecondary,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(bottom = 6.dp)
+                        modifier = Modifier.padding(bottom = 5.dp)
                     )
                 }
                 Text(
@@ -324,13 +335,13 @@ private fun CurrentPaceCard(
             }
         }
 
-        // Tactile Brutalist 3D Adjuster Buttons
+        // Tactile Brutalist 3D Adjuster Buttons (20% taller: 65.dp)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Minus Button
+            // Minus Button (20% taller: 65.dp)
             Tactile3DButton(
                 text = "−",
                 backgroundColor = ButtonNeutralBg,
@@ -343,7 +354,7 @@ private fun CurrentPaceCard(
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = 2.dp)
             ) {
                 Text(
                     text = "± 0.1",
@@ -358,7 +369,7 @@ private fun CurrentPaceCard(
                 )
             }
 
-            // Plus Button (Mint Green)
+            // Plus Button (Mint Green, 20% taller: 65.dp)
             Tactile3DButton(
                 text = "+",
                 backgroundColor = MintGreen,
@@ -373,6 +384,76 @@ private fun CurrentPaceCard(
 }
 
 @Composable
+private fun PresetsSection(
+    currentSpeed: Float,
+    onSelectPreset: (Float) -> Unit
+) {
+    val presets = listOf(5.0f, 8.0f, 10.0f, 12.0f, 15.0f, 16.8f)
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "PRESETS",
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = "Fast Speed Select",
+                color = TextMuted,
+                fontSize = 10.sp
+            )
+        }
+
+        // 6 Preset buttons in a horizontal row (20% taller: 44.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            presets.forEach { preset ->
+                val isSelected = Math.abs(currentSpeed - preset) < 0.05f
+                val interactionSource = remember { MutableInteractionSource() }
+                val isPressed by interactionSource.collectIsPressedAsState()
+                val label = if (preset % 1f == 0f) String.format(Locale.US, "%.0f", preset) else String.format(Locale.US, "%.1f", preset)
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSelected) MintGreenDark else Color(0xFF111213))
+                        .padding(bottom = if (isPressed) 1.dp else 3.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isSelected) MintGreen else CharcoalSurface)
+                        .clickable(interactionSource = interactionSource, indication = null) {
+                            onSelectPreset(preset)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        color = if (isSelected) CharcoalCard else TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun RecallAndDisplayRow(
     previousSpeed: Float,
     keypadBuffer: String,
@@ -381,21 +462,22 @@ private fun RecallAndDisplayRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Previous Pace Card (Tap to swap)
+        // Previous Pace Card (20% taller: 62.dp)
         Box(
             modifier = Modifier
                 .weight(1f)
+                .height(62.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(ButtonNeutralBg)
                 .border(1.dp, CharcoalBorder, RoundedCornerShape(14.dp))
                 .clickable { onRecall() }
-                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxSize(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -403,7 +485,7 @@ private fun RecallAndDisplayRow(
                     Text(
                         text = "Previous pace",
                         color = TextSecondary,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Medium
                     )
                     Row(verticalAlignment = Alignment.Bottom) {
@@ -432,10 +514,11 @@ private fun RecallAndDisplayRow(
             }
         }
 
-        // Keypad Display Preview Box
+        // Keypad Display Preview Box (20% taller: 62.dp)
         Box(
             modifier = Modifier
                 .weight(1f)
+                .height(62.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(CharcoalSurface)
                 .border(
@@ -443,7 +526,7 @@ private fun RecallAndDisplayRow(
                     color = if (keypadBuffer.isNotEmpty()) MintGreen.copy(alpha = 0.5f) else CharcoalBorder,
                     shape = RoundedCornerShape(14.dp)
                 )
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             contentAlignment = Alignment.CenterEnd
         ) {
             Row(verticalAlignment = Alignment.Bottom) {
@@ -483,6 +566,7 @@ private fun KeypadSection(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // 3x4 Keypad Grid (20% taller buttons: 58.dp)
         keys.forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -498,9 +582,9 @@ private fun KeypadSection(
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
 
-        // Enter Pace Button
+        // Enter Pace Button (20% taller: 62.dp)
         val isEnabled = keypadBuffer.isNotEmpty()
         Button(
             onClick = { if (isEnabled) onSubmit() },
@@ -512,7 +596,7 @@ private fun KeypadSection(
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(52.dp)
+                .height(62.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -549,7 +633,7 @@ private fun Tactile3DButton(
 
     Box(
         modifier = modifier
-            .height(54.dp)
+            .height(65.dp) // 20% taller than 54.dp
             .clip(RoundedCornerShape(14.dp))
             .background(borderColor)
             .padding(bottom = if (isPressed) 1.dp else 4.dp)
@@ -580,7 +664,7 @@ private fun Tactile3DButton(
         Text(
             text = text,
             color = textColor,
-            fontSize = 28.sp,
+            fontSize = 30.sp,
             fontWeight = FontWeight.Bold
         )
     }
@@ -597,7 +681,7 @@ private fun Keypad3DButton(
 
     Box(
         modifier = modifier
-            .height(48.dp)
+            .height(58.dp) // 20% taller than 48.dp
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xFF111213))
             .padding(bottom = if (isPressed) 1.dp else 3.dp)
@@ -609,10 +693,8 @@ private fun Keypad3DButton(
         Text(
             text = text,
             color = Color.White,
-            fontSize = 18.sp,
+            fontSize = 19.sp,
             fontWeight = FontWeight.SemiBold
         )
     }
 }
-
-
