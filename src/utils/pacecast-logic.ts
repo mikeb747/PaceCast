@@ -37,6 +37,19 @@ export function clampPresetSpeed(value: number): number {
   return clampSpeed(value, MIN_PRESET_SPEED_KMH, MAX_PRESET_SPEED_KMH);
 }
 
+export type UnitSystem = 'metric' | 'imperial';
+
+export const KMH_TO_MPH = 0.621371192;
+export const MPH_TO_KMH = 1.609344;
+
+export function kmhToMph(kmh: number): number {
+  return Math.round(kmh * KMH_TO_MPH * 10) / 10;
+}
+
+export function mphToKmh(mph: number): number {
+  return Math.round(mph * MPH_TO_KMH * 10) / 10;
+}
+
 /**
  * Formats speed in km/h to running pace min:sec /km.
  * E.g. 12 km/h -> 5:00 /km, 16.8 km/h -> 3:34 /km
@@ -44,6 +57,20 @@ export function clampPresetSpeed(value: number): number {
 export function formatPace(speedKmh: number): string {
   if (speedKmh <= 0) return "--:--";
   const totalSeconds = Math.round((3600 / speedKmh));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Formats speed in km/h to running pace min:sec /mile.
+ * E.g. 16.8 km/h (10.4 mph) -> 5:45 /mi, 12 km/h (7.5 mph) -> 8:03 /mi
+ */
+export function formatPaceMile(speedKmh: number): string {
+  if (speedKmh <= 0) return "--:--";
+  const speedMph = speedKmh * KMH_TO_MPH;
+  if (speedMph <= 0) return "--:--";
+  const totalSeconds = Math.round(3600 / speedMph);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;

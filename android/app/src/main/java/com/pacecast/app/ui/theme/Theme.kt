@@ -9,8 +9,8 @@ private val DarkColorScheme = darkColorScheme(
     onPrimary = CharcoalCard,
     secondary = MintGreenBright,
     onSecondary = CharcoalCard,
-    background = CharcoalOuter,
-    surface = CharcoalCard,
+    background = androidx.compose.ui.graphics.Color.Black,
+    surface = androidx.compose.ui.graphics.Color.Black,
     onBackground = TextPrimary,
     onSurface = TextPrimary
 )

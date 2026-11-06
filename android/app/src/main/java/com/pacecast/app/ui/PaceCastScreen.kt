@@ -1,5 +1,6 @@
 package com.pacecast.app.ui
 
+import android.content.Context
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -27,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,12 +41,37 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
 
+private const val KMH_TO_MPH = 0.621371192f
+
+private fun kmhToMph(kmh: Float): Float = kmh * KMH_TO_MPH
+
+private fun formatPaceKm(speedKmh: Float): String {
+    if (speedKmh <= 0f) return "--:--"
+    val totalSecs = (3600f / speedKmh).roundToInt()
+    val mins = totalSecs / 60
+    val secs = totalSecs % 60
+    return String.format(Locale.US, "%d:%02d", mins, secs)
+}
+
+private fun formatPaceMile(speedKmh: Float): String {
+    if (speedKmh <= 0f) return "--:--"
+    val speedMph = kmhToMph(speedKmh)
+    if (speedMph <= 0f) return "--:--"
+    val totalSecs = (3600f / speedMph).roundToInt()
+    val mins = totalSecs / 60
+    val secs = totalSecs % 60
+    return String.format(Locale.US, "%d:%02d", mins, secs)
+}
+
 @Composable
 fun PaceCastScreen(
     bleServer: BleRscServer,
     onToggleAdvertising: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("pacecast_prefs", Context.MODE_PRIVATE) }
+
     val isAdvertising by bleServer.isAdvertising.collectAsState()
     val deviceCount by bleServer.subscribedDeviceCount.collectAsState()
 
@@ -52,8 +79,32 @@ fun PaceCastScreen(
     var previousSpeed by remember { mutableFloatStateOf(6.0f) }
     var keypadBuffer by remember { mutableStateOf("") }
 
-    // Dynamic Presets (52dp high, editable via 1s hold)
-    var presets by remember { mutableStateOf(listOf(5.0f, 8.0f, 10.0f, 12.0f, 15.0f, 16.8f)) }
+    // Unit System state: "metric" (km/h & /km) vs "imperial" (mph & /mi)
+    var unitSystem by remember {
+        mutableStateOf(prefs.getString("unit_system", "metric") ?: "metric")
+    }
+
+    fun toggleUnitSystem() {
+        val next = if (unitSystem == "metric") "imperial" else "metric"
+        unitSystem = next
+        prefs.edit().putString("unit_system", next).apply()
+    }
+
+    // Dynamic Presets (saved to SharedPreferences so they persist across app restarts)
+    var presets by remember {
+        mutableStateOf(
+            run {
+                val saved = prefs.getString("presets_csv", null)
+                if (saved != null) {
+                    val list = saved.split(",").mapNotNull { it.toFloatOrNull() }
+                    if (list.size == 6) list else listOf(5.0f, 8.0f, 10.0f, 12.0f, 15.0f, 16.8f)
+                } else {
+                    listOf(5.0f, 8.0f, 10.0f, 12.0f, 15.0f, 16.8f)
+                }
+            }
+        )
+    }
+
     var editingPresetIndex by remember { mutableStateOf<Int?>(null) }
     var presetEditBuffer by remember { mutableStateOf("") }
 
@@ -62,7 +113,7 @@ fun PaceCastScreen(
     val coroutineScope = rememberCoroutineScope()
     var debounceJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
-    // Keep BleRscServer synchronized with current speed
+    // Keep BleRscServer synchronized with current speed (always in km/h for standard BLE RSC 0x2A53)
     LaunchedEffect(currentSpeed) {
         bleServer.currentSpeedKmh = currentSpeed
     }
@@ -114,6 +165,7 @@ fun PaceCastScreen(
         val updated = presets.toMutableList()
         updated[index] = clamped
         presets = updated
+        prefs.edit().putString("presets_csv", updated.joinToString(",")).apply()
         editingPresetIndex = null
         presetEditBuffer = ""
     }
@@ -169,11 +221,11 @@ fun PaceCastScreen(
         }
     }
 
-    // Locks to 100% viewport height, no vertical scrolling, zero bottom empty space
+    // Pure black background to seamlessly blend into phone top bar / notch
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(CharcoalCard)
+            .background(Color.Black)
             .systemBarsPadding()
             .padding(horizontal = 4.dp, vertical = 4.dp),
         contentAlignment = Alignment.TopCenter
@@ -191,13 +243,15 @@ fun PaceCastScreen(
                 onToggle = onToggleAdvertising
             )
 
-            // Current Pace Card: Intrinsic height, 15% larger typography
+            // Current Pace Card: Intrinsic height, tap to toggle units, zero padding under/sides of -/+ buttons
             CurrentPaceCard(
                 speedKmh = currentSpeed,
+                unitSystem = unitSystem,
+                onToggleUnit = { toggleUnitSystem() },
                 onAdjust = { delta -> applyAdjustment(delta) }
             )
 
-            // Speed Presets Section: Intrinsic height (52dp buttons)
+            // Speed Presets Section: Intrinsic height (52dp buttons, persisted & immediate updates)
             PresetsSection(
                 currentSpeed = currentSpeed,
                 presets = presets,
@@ -205,17 +259,18 @@ fun PaceCastScreen(
                 onLongPressPreset = { index -> openPresetEditor(index) }
             )
 
-            // Previous Pace Card & Keypad Display Row: Intrinsic height
+            // Switch Card & Keypad Display Row: Intrinsic height, Switch text on top, 20% larger speed, #545454 typed box
             RecallAndDisplayRow(
                 previousSpeed = previousSpeed,
                 keypadBuffer = keypadBuffer,
-                currentSpeed = currentSpeed,
+                unitSystem = unitSystem,
                 onRecall = { swapPaces() }
             )
 
             // Exact Pace Numpad: Takes all remaining vertical space (Modifier.weight(1f))
             KeypadSection(
                 keypadBuffer = keypadBuffer,
+                unitSystem = unitSystem,
                 onKeyPress = { key -> handleKeyPress(key) },
                 onSubmit = { submitKeypadPace() },
                 modifier = Modifier
@@ -468,113 +523,138 @@ private fun HeaderSection(
 @Composable
 private fun CurrentPaceCard(
     speedKmh: Float,
+    unitSystem: String,
+    onToggleUnit: () -> Unit,
     onAdjust: (Float) -> Unit
 ) {
-    fun calculatePace(speed: Float): String {
-        if (speed <= 0f) return "--:--"
-        val totalSecs = (3600f / speed).roundToInt()
-        val mins = totalSecs / 60
-        val secs = totalSecs % 60
-        return String.format(Locale.US, "%d:%02d", mins, secs)
-    }
+    val displaySpeed = if (unitSystem == "metric") speedKmh else kmhToMph(speedKmh)
+    val displaySpeedUnit = if (unitSystem == "metric") "km/h" else "mph"
+    val displayPace = if (unitSystem == "metric") formatPaceKm(speedKmh) else formatPaceMile(speedKmh)
+    val displayPaceUnit = if (unitSystem == "metric") "/km" else "/mi"
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(CharcoalSurface)
-            .border(1.dp, CharcoalBorder, RoundedCornerShape(16.dp))
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .border(1.dp, CharcoalBorder, RoundedCornerShape(16.dp)),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Speed & Pace Readouts (15% larger typography)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
+        // Top display area: Tap to switch km/h & /km <-> mph & /mi (compacted height)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onToggleUnit() }
+                .padding(horizontal = 10.dp, top = 6.dp, bottom = 3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // Speed & Pace Readouts
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Speed Number & Unit
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
-                        text = String.format(Locale.US, "%.1f", speedKmh),
+                        text = String.format(Locale.US, "%.1f", displaySpeed),
                         color = TextPrimary,
-                        fontSize = 46.sp,
+                        fontSize = 44.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = "km/h",
+                        text = displaySpeedUnit,
                         color = TextSecondary,
-                        fontSize = 15.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(bottom = 5.dp)
                     )
                 }
+
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(38.dp)
+                        .background(CharcoalBorder)
+                )
+
+                // Pace Number & Unit
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = displayPace,
+                        color = MintGreen,
+                        fontSize = 44.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = displayPaceUnit,
+                        color = TextSecondary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 5.dp)
+                    )
+                }
+            }
+
+            // Inline Labels: SPEED on left, Tap to switch hint in middle, PACE on right
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = "SPEED",
                     color = TextMuted,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 )
-            }
 
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(44.dp)
-                    .background(CharcoalBorder)
-            )
+                Text(
+                    text = "Tap to switch to " + if (unitSystem == "metric") "mph · /Mi" else "km/h · /km",
+                    color = TextMuted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium
+                )
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        text = calculatePace(speedKmh),
-                        color = MintGreen,
-                        fontSize = 46.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "/km",
-                        color = TextSecondary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(bottom = 5.dp)
-                    )
-                }
                 Text(
                     text = "PACE",
                     color = TextMuted,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 )
             }
         }
 
-        // Tactile Brutalist 3D Adjuster Buttons
+        // Tactile Brutalist 3D Adjuster Buttons: ZERO padding under, left of '-', and right of '+'
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Minus Button
-            Tactile3DButton(
-                text = "−",
-                backgroundColor = ButtonNeutralBg,
-                borderColor = ButtonNeutralBorder,
-                textColor = Color.White,
-                modifier = Modifier.weight(1f),
+            // Minus Button: flush to card bottom & left edge
+            FlushMinusButton(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
                 onSingleTap = { onAdjust(-0.1f) },
                 onHoldTick = { onAdjust(-0.5f) }
             )
 
+            // Middle step indicator
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 2.dp)
+                modifier = Modifier.padding(horizontal = 6.dp)
             ) {
                 Text(
                     text = "± 0.1",
@@ -589,17 +669,109 @@ private fun CurrentPaceCard(
                 )
             }
 
-            // Plus Button (Mint Green)
-            Tactile3DButton(
-                text = "+",
-                backgroundColor = MintGreen,
-                borderColor = MintGreenDark,
-                textColor = CharcoalCard,
-                modifier = Modifier.weight(1f),
+            // Plus Button: flush to card bottom & right edge
+            FlushPlusButton(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
                 onSingleTap = { onAdjust(+0.1f) },
                 onHoldTick = { onAdjust(+0.5f) }
             )
         }
+    }
+}
+
+@Composable
+private fun FlushMinusButton(
+    modifier: Modifier = Modifier,
+    onSingleTap: () -> Unit,
+    onHoldTick: () -> Unit
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 16.dp, bottomEnd = 0.dp))
+            .background(ButtonNeutralBorder)
+            .padding(bottom = if (isPressed) 1.dp else 4.dp)
+            .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 14.dp, bottomEnd = 0.dp))
+            .background(ButtonNeutralBg)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        isPressed = true
+                        onSingleTap()
+
+                        val holdJob = coroutineScope.launch {
+                            delay(450L)
+                            while (isPressed) {
+                                onHoldTick()
+                                delay(190L)
+                            }
+                        }
+
+                        tryAwaitRelease()
+                        isPressed = false
+                        holdJob.cancel()
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "−",
+            color = Color.White,
+            fontSize = 34.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun FlushPlusButton(
+    modifier: Modifier = Modifier,
+    onSingleTap: () -> Unit,
+    onHoldTick: () -> Unit
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 0.dp, bottomEnd = 16.dp))
+            .background(MintGreenDark)
+            .padding(bottom = if (isPressed) 1.dp else 4.dp)
+            .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 0.dp, bottomEnd = 14.dp))
+            .background(MintGreen)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        isPressed = true
+                        onSingleTap()
+
+                        val holdJob = coroutineScope.launch {
+                            delay(450L)
+                            while (isPressed) {
+                                onHoldTick()
+                                delay(190L)
+                            }
+                        }
+
+                        tryAwaitRelease()
+                        isPressed = false
+                        holdJob.cancel()
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "+",
+            color = CharcoalCard,
+            fontSize = 34.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -666,6 +838,10 @@ private fun PresetButton(
     val coroutineScope = rememberCoroutineScope()
     val label = if (preset % 1f == 0f) String.format(Locale.US, "%.0f", preset) else String.format(Locale.US, "%.1f", preset)
 
+    // Using rememberUpdatedState avoids stale closures when preset or onClick updates
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+
     Box(
         modifier = modifier
             .height(52.dp) // Exactly 52 pixels high
@@ -674,20 +850,20 @@ private fun PresetButton(
             .padding(bottom = if (isPressed) 1.dp else 3.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(if (isSelected) MintGreen else CharcoalSurface)
-            .pointerInput(Unit) {
+            .pointerInput(preset) {
                 detectTapGestures(
                     onPress = {
                         isPressed = true
                         val holdJob = coroutineScope.launch {
                             delay(1000L) // 1 second hold to trigger edit
-                            onLongPress()
+                            currentOnLongPress()
                         }
                         tryAwaitRelease()
                         isPressed = false
                         holdJob.cancel()
                     },
                     onTap = {
-                        onClick()
+                        currentOnClick()
                     }
                 )
             },
@@ -707,19 +883,22 @@ private fun PresetButton(
 private fun RecallAndDisplayRow(
     previousSpeed: Float,
     keypadBuffer: String,
-    currentSpeed: Float,
+    unitSystem: String,
     onRecall: () -> Unit
 ) {
+    val displayPrevSpeed = if (unitSystem == "metric") previousSpeed else kmhToMph(previousSpeed)
+    val displayUnit = if (unitSystem == "metric") "km/h" else "mph"
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Previous Pace Card
+        // Switch Box with 'Switch' text inside next to the icon (same 58.dp height)
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(56.dp)
+                .height(58.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(ButtonNeutralBg)
                 .border(1.dp, CharcoalBorder, RoundedCornerShape(14.dp))
@@ -731,49 +910,54 @@ private fun RecallAndDisplayRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Row(verticalAlignment = Alignment.Bottom) {
                     Text(
-                        text = "Previous pace",
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
+                        text = String.format(Locale.US, "%.1f", displayPrevSpeed),
+                        color = TextPrimary,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace
                     )
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            text = String.format(Locale.US, "%.1f", previousSpeed),
-                            color = TextPrimary,
-                            fontSize = 21.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "km/h",
-                            color = TextSecondary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(bottom = 2.dp)
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = displayUnit,
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(bottom = 3.dp)
+                    )
                 }
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Swap interval pace",
-                    tint = MintGreen,
-                    modifier = Modifier.size(20.dp)
-                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Switch",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Swap interval pace",
+                        tint = MintGreen,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
-        // Keypad Display Preview Box
+        // Keypad Display Box (Typed text removed, styled with #545454, same 58.dp height)
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(56.dp)
+                .height(58.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(CharcoalSurface)
+                .background(Color(0xFF545454))
                 .border(
                     width = 1.dp,
-                    color = if (keypadBuffer.isNotEmpty()) MintGreen.copy(alpha = 0.5f) else CharcoalBorder,
+                    color = if (keypadBuffer.isNotEmpty()) MintGreen.copy(alpha = 0.6f) else CharcoalBorder,
                     shape = RoundedCornerShape(14.dp)
                 )
                 .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -782,15 +966,15 @@ private fun RecallAndDisplayRow(
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = if (keypadBuffer.isNotEmpty()) keypadBuffer else "—",
-                    color = if (keypadBuffer.isNotEmpty()) MintGreen else TextSecondary,
-                    fontSize = 23.sp,
+                    color = if (keypadBuffer.isNotEmpty()) MintGreen else TextPrimary,
+                    fontSize = 25.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "km/h",
-                    color = TextSecondary,
+                    text = displayUnit,
+                    color = TextPrimary.copy(alpha = 0.8f),
                     fontSize = 13.sp,
                     modifier = Modifier.padding(bottom = 2.dp)
                 )
@@ -802,6 +986,7 @@ private fun RecallAndDisplayRow(
 @Composable
 private fun KeypadSection(
     keypadBuffer: String,
+    unitSystem: String,
     onKeyPress: (String) -> Unit,
     onSubmit: () -> Unit,
     modifier: Modifier = Modifier
@@ -874,58 +1059,6 @@ private fun KeypadSection(
 }
 
 @Composable
-private fun Tactile3DButton(
-    text: String,
-    backgroundColor: Color,
-    borderColor: Color,
-    textColor: Color,
-    modifier: Modifier = Modifier,
-    onSingleTap: () -> Unit,
-    onHoldTick: () -> Unit
-) {
-    var isPressed by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
-
-    Box(
-        modifier = modifier
-            .height(58.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(borderColor)
-            .padding(bottom = if (isPressed) 1.dp else 4.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(backgroundColor)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        isPressed = true
-                        onSingleTap()
-
-                        val holdJob = coroutineScope.launch {
-                            delay(450L) // initial hold delay
-                            while (isPressed) {
-                                onHoldTick()
-                                delay(190L) // repeat rate
-                            }
-                        }
-
-                        tryAwaitRelease()
-                        isPressed = false
-                        holdJob.cancel()
-                    }
-                )
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = textColor,
-            fontSize = 34.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-@Composable
 private fun Keypad3DButton(
     text: String,
     modifier: Modifier = Modifier,
@@ -947,7 +1080,7 @@ private fun Keypad3DButton(
         Text(
             text = text,
             color = Color.White,
-            fontSize = 22.sp, // 22sp as specifically requested
+            fontSize = 22.sp, // 22sp as requested
             fontWeight = FontWeight.Bold
         )
     }

@@ -16,6 +16,8 @@ import {
 import {
   clampSpeed,
   formatPace,
+  formatPaceMile,
+  kmhToMph,
   encodeRscPacket,
   PaceTransitionManager,
   RscPacket,
@@ -26,6 +28,7 @@ import {
   DEFAULT_SPEED_PRESETS,
   MAX_PRESET_SPEED_KMH,
   clampPresetSpeed,
+  UnitSystem,
 } from '../utils/pacecast-logic';
 
 const HOLD_DELAY = 450;
@@ -61,6 +64,20 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   const [wakeLockActive, setWakeLockActive] = useState<boolean>(false);
   const wakeLockRef = useRef<any>(null);
 
+  // Unit System state ('metric' km/h & /km <-> 'imperial' mph & /mi)
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => {
+    const saved = localStorage.getItem('pacecast-unit-system');
+    return (saved as UnitSystem) || 'metric';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('pacecast-unit-system', unitSystem);
+  }, [unitSystem]);
+
+  const toggleUnitSystem = () => {
+    setUnitSystem((prev) => (prev === 'metric' ? 'imperial' : 'metric'));
+  };
+
   // Dynamic 6 Presets (stored in localStorage)
   const [presets, setPresets] = useState<number[]>(() => {
     const saved = localStorage.getItem('pacecast-presets');
@@ -77,7 +94,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
     return DEFAULT_SPEED_PRESETS;
   });
 
+  const presetsRef = useRef(presets);
   useEffect(() => {
+    presetsRef.current = presets;
     localStorage.setItem('pacecast-presets', JSON.stringify(presets));
   }, [presets]);
 
@@ -102,13 +121,15 @@ export const PaceController: React.FC<PaceControllerProps> = ({
     }, 1000);
   }
 
-  function handlePresetPointerUp(presetSpeed: number) {
+  function handlePresetPointerUp(index: number) {
     if (presetHoldTimeout.current !== null) {
       window.clearTimeout(presetHoldTimeout.current);
       presetHoldTimeout.current = null;
     }
     if (!presetHoldFired.current) {
-      choosePreset(presetSpeed);
+      // Always use latest value from presetsRef
+      const targetSpeed = presetsRef.current[index];
+      choosePreset(targetSpeed);
     }
   }
 
@@ -121,7 +142,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
 
   function openEditPreset(index: number) {
     setEditingPresetIndex(index);
-    setPresetEditBuffer(presets[index].toFixed(1));
+    setPresetEditBuffer(presetsRef.current[index].toFixed(1));
   }
 
   function closeEditPreset() {
@@ -160,11 +181,11 @@ export const PaceController: React.FC<PaceControllerProps> = ({
     if (!Number.isFinite(num)) return;
     const clamped = clampPresetSpeed(num);
 
-    setPresets((prev) => {
-      const copy = [...prev];
-      copy[editingPresetIndex] = clamped;
-      return copy;
-    });
+    const updated = [...presetsRef.current];
+    updated[editingPresetIndex] = clamped;
+    presetsRef.current = updated;
+    setPresets(updated);
+    localStorage.setItem('pacecast-presets', JSON.stringify(updated));
     closeEditPreset();
   }
 
@@ -409,43 +430,62 @@ export const PaceController: React.FC<PaceControllerProps> = ({
 
         {/* Current Pace & Speed Card (shrink-0, intrinsic height, 15% larger typography) */}
         <section
-          className="shrink-0 bg-[#222527] border border-[#2e3235] rounded-2xl p-2.5 sm:p-3.5 space-y-2 sm:space-y-2.5 shadow-inner"
+          className="shrink-0 bg-[#222527] border border-[#2e3235] rounded-2xl overflow-hidden shadow-inner flex flex-col"
           aria-label="Current pace and speed controller"
         >
-          {/* Dual Metrics: Speed & Pace */}
-          <div className="grid grid-cols-2 gap-3 items-center">
-            {/* Speed readout */}
-            <div className="text-center border-r border-[#2e3235] pr-2">
-              <div className="flex items-baseline justify-center gap-1 font-mono">
-                <span className="text-5xl sm:text-6xl font-black text-white tracking-tight">
-                  {speed.toFixed(1)}
-                </span>
-                <span className="text-sm sm:text-base font-semibold text-neutral-400">km/h</span>
+          {/* Dual Metrics: Speed & Pace - Tap to toggle km/h & /km <-> mph & /mi */}
+          <button
+            type="button"
+            onClick={toggleUnitSystem}
+            className="w-full text-left pt-1.5 pb-1 px-2.5 sm:px-4 hover:bg-white/[0.03] transition group cursor-pointer select-none"
+            title={`Tap to switch to ${unitSystem === 'metric' ? 'mph & /mi' : 'km/h & /km'}`}
+            aria-label={`Current speed and pace. Tap to toggle unit system, currently ${unitSystem === 'metric' ? 'km/h' : 'mph'}`}
+          >
+            <div className="grid grid-cols-2 gap-3 items-center">
+              {/* Speed readout */}
+              <div className="text-center border-r border-[#2e3235] pr-2">
+                <div className="flex items-baseline justify-center gap-1 font-mono">
+                  <span className="text-5xl sm:text-6xl font-black text-white tracking-tight leading-none">
+                    {unitSystem === 'metric' ? speed.toFixed(1) : kmhToMph(speed).toFixed(1)}
+                  </span>
+                  <span className="text-sm sm:text-base font-semibold text-neutral-400">
+                    {unitSystem === 'metric' ? 'km/h' : 'mph'}
+                  </span>
+                </div>
               </div>
-              <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mt-0.5">
+
+              {/* Pace readout (/km or /mi) */}
+              <div className="text-center pl-2">
+                <div className="flex items-baseline justify-center gap-1 font-mono">
+                  <span className="text-5xl sm:text-6xl font-black text-[#4ade80] tracking-tight leading-none">
+                    {unitSystem === 'metric' ? formatPace(speed) : formatPaceMile(speed)}
+                  </span>
+                  <span className="text-sm sm:text-base font-semibold text-neutral-400">
+                    {unitSystem === 'metric' ? '/km' : '/mi'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Inline Labels: SPEED on left, Tap to switch hint in middle, PACE on right */}
+            <div className="flex items-center justify-between px-2 sm:px-4 mt-0.5 text-xs font-bold">
+              <span className="text-neutral-400 uppercase tracking-wider">
                 Speed
-              </p>
-            </div>
-
-            {/* Pace readout (/km) */}
-            <div className="text-center pl-2">
-              <div className="flex items-baseline justify-center gap-1 font-mono">
-                <span className="text-5xl sm:text-6xl font-black text-[#4ade80] tracking-tight">
-                  {formatPace(speed)}
-                </span>
-                <span className="text-sm sm:text-base font-semibold text-neutral-400">/km</span>
-              </div>
-              <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mt-0.5">
+              </span>
+              <span className="text-[10px] text-neutral-400 group-hover:text-emerald-400 transition font-normal whitespace-nowrap">
+                Tap to switch to {unitSystem === 'metric' ? 'mph · /Mi' : 'km/h · /km'}
+              </span>
+              <span className="text-neutral-400 uppercase tracking-wider">
                 Pace
-              </p>
+              </span>
             </div>
-          </div>
+          </button>
 
-          {/* Adjuster Buttons: Brutalist 3D Tactile Buttons (h-[58px]) */}
-          <div className="flex items-center justify-between gap-3 pt-0.5">
-            {/* Decrement Button */}
+          {/* Adjuster Buttons: ZERO padding under, left of '-', and right of '+' */}
+          <div className="flex items-stretch justify-between w-full pt-1 pb-0 pl-0 pr-0">
+            {/* Decrement Button: Flush to card bottom and left edge */}
             <button
-              className="btn-3d-neutral flex-1 h-[58px] rounded-xl flex items-center justify-center text-4xl font-bold cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+              className="btn-3d-neutral flex-1 h-[58px] rounded-none rounded-bl-2xl flex items-center justify-center text-4xl font-bold cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               aria-label="Decrease speed"
               onPointerDown={() => startHold(-1)}
               onPointerUp={stopHold}
@@ -458,14 +498,14 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             </button>
 
             {/* Copy indicator */}
-            <div className="flex flex-col items-center justify-center px-2 select-none">
+            <div className="flex flex-col items-center justify-center px-2 sm:px-3 select-none">
               <span className="text-sm font-black text-white">± 0.1</span>
               <span className="text-[11px] text-neutral-400 whitespace-nowrap">Hold for 0.5</span>
             </div>
 
-            {/* Increment Button (Mint Green 3D) */}
+            {/* Increment Button: Flush to card bottom and right edge */}
             <button
-              className="btn-3d-mint flex-1 h-[58px] rounded-xl flex items-center justify-center text-4xl font-black cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+              className="btn-3d-mint flex-1 h-[58px] rounded-none rounded-br-2xl flex items-center justify-center text-4xl font-black cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               aria-label="Increase speed"
               onPointerDown={() => startHold(1)}
               onPointerUp={stopHold}
@@ -495,7 +535,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
                 <button
                   key={index}
                   onPointerDown={() => handlePresetPointerDown(index)}
-                  onPointerUp={() => handlePresetPointerUp(p)}
+                  onPointerUp={() => handlePresetPointerUp(index)}
                   onPointerCancel={handlePresetPointerCancel}
                   onPointerLeave={handlePresetPointerCancel}
                   onContextMenu={(e) => e.preventDefault()}
@@ -513,45 +553,48 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           </div>
         </section>
 
-        {/* Previous Pace Card & Keypad Display Row (shrink-0, intrinsic height, 15% larger text) */}
+        {/* Switch Card & Keypad Display Row (shrink-0, intrinsic height) */}
         <div className="shrink-0 grid grid-cols-2 gap-2 sm:gap-3">
-          {/* Previous Pace Swap Card */}
+          {/* Switch Button with 'Switch' text inside next to the icon */}
           <button
             onClick={recallPrevious}
             className="h-[56px] sm:h-[60px] flex items-center justify-between px-3 sm:px-3.5 rounded-xl bg-[#222527] border border-[#2e3235] hover:border-emerald-500/40 transition group cursor-pointer text-left"
-            title="Tap to swap with Current Pace (Interval Mode)"
-            aria-label={`Swap with previous pace of ${previousSpeed.toFixed(1)} km/h`}
+            title="Tap to switch with Current Pace (Interval Mode)"
+            aria-label={`Switch with previous pace of ${unitSystem === 'metric' ? previousSpeed.toFixed(1) + ' km/h' : kmhToMph(previousSpeed).toFixed(1) + ' mph'}`}
           >
-            <div>
-              <span className="text-[11px] sm:text-xs font-bold text-neutral-400 block uppercase tracking-wider">
-                Previous pace
+            <div className="flex items-baseline gap-1.5 font-mono">
+              <span className="text-3xl font-black text-white group-hover:text-emerald-400 transition leading-none">
+                {unitSystem === 'metric' ? previousSpeed.toFixed(1) : kmhToMph(previousSpeed).toFixed(1)}
               </span>
-              <div className="flex items-baseline gap-1 font-mono mt-0.5">
-                <span className="text-2xl font-bold text-white group-hover:text-emerald-400 transition">
-                  {previousSpeed.toFixed(1)}
-                </span>
-                <span className="text-xs sm:text-sm text-neutral-400">km/h</span>
-              </div>
+              <span className="text-xs sm:text-sm font-semibold text-neutral-400">
+                {unitSystem === 'metric' ? 'km/h' : 'mph'}
+              </span>
             </div>
-            <div className="w-8 h-8 rounded-lg bg-[#181a1b] border border-[#2e3235] flex items-center justify-center text-emerald-400 group-hover:rotate-180 transition duration-300">
-              <RotateCcw className="w-4 h-4" />
+            <div className="flex items-center gap-2">
+              <span className="text-xs sm:text-sm font-bold text-neutral-300 uppercase tracking-wider select-none">
+                Switch
+              </span>
+              <div className="w-8 h-8 rounded-lg bg-[#181a1b] border border-[#2e3235] flex items-center justify-center text-emerald-400 group-hover:rotate-180 transition duration-300">
+                <RotateCcw className="w-4 h-4" />
+              </div>
             </div>
           </button>
 
-          {/* Keypad Display Box */}
-          <div className="h-[56px] sm:h-[60px] flex items-center justify-between px-3 sm:px-3.5 rounded-xl bg-[#141517] border border-[#2e3235] text-right font-mono">
-            <span className="text-[11px] sm:text-xs text-neutral-500 uppercase tracking-wider font-sans">
-              Typed
+          {/* Keypad Display Box (Typed text removed, styled per focus mode #545454) */}
+          <div
+            style={{ backgroundColor: '#545454' }}
+            className="h-[56px] sm:h-[60px] flex items-center justify-between px-3 sm:px-3.5 rounded-xl border border-[#2e3235] text-right font-mono shadow-inner"
+          >
+            <span className="text-xs font-bold text-neutral-300 uppercase tracking-wider font-sans">
+              Buffer
             </span>
             <div className="flex items-baseline gap-1">
-              <span
-                className={`text-2xl font-bold ${
-                  keypadValue ? 'text-[#4ade80]' : 'text-neutral-500'
-                }`}
-              >
+              <span className={`text-2xl font-bold ${keypadValue ? 'text-[#4ade80]' : 'text-neutral-300'}`}>
                 {keypadValue || '—'}
               </span>
-              <span className="text-xs sm:text-sm text-neutral-500">km/h</span>
+              <span className="text-xs sm:text-sm text-neutral-300">
+                {unitSystem === 'metric' ? 'km/h' : 'mph'}
+              </span>
             </div>
           </div>
         </div>
