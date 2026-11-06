@@ -17,6 +17,10 @@ export interface RscPacket {
   debugDescription: string;
 }
 
+export const DEFAULT_SPEED_PRESETS = [5.0, 8.0, 10.0, 12.0, 15.0, 16.8];
+export const MIN_PRESET_SPEED_KMH = 0.0;
+export const MAX_PRESET_SPEED_KMH = 24.0;
+
 /**
  * Clamps speed to valid range and rounds to 1 decimal place.
  */
@@ -24,6 +28,13 @@ export function clampSpeed(value: number, min = MIN_SPEED_KMH, max = MAX_SPEED_K
   if (isNaN(value)) return min;
   const clamped = Math.min(max, Math.max(min, value));
   return Math.round(clamped * 10) / 10;
+}
+
+/**
+ * Clamps preset speed to 0.0 - 24.0 km/h with 0.1 increments.
+ */
+export function clampPresetSpeed(value: number): number {
+  return clampSpeed(value, MIN_PRESET_SPEED_KMH, MAX_PRESET_SPEED_KMH);
 }
 
 /**

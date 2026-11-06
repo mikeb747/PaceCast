@@ -15,6 +15,14 @@ test('clampSpeed respects min and max limits and 1 decimal place precision', () 
   assert.equal(clampSpeed(0.0), 0.0);
 });
 
+test('clampPresetSpeed clamps to 0.0 - 24.0 km/h with 0.1 precision', async () => {
+  const { clampPresetSpeed } = await import('./pacecast-logic.js');
+  assert.equal(clampPresetSpeed(-2), 0.0);
+  assert.equal(clampPresetSpeed(25.5), 24.0);
+  assert.equal(clampPresetSpeed(12.34), 12.3);
+  assert.equal(clampPresetSpeed(23.96), 24.0);
+});
+
 test('formatPace accurately calculates min:sec per kilometer', () => {
   assert.equal(formatPace(0), '--:--');
   assert.equal(formatPace(6.0), '10:00');

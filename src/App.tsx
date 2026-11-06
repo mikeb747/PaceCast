@@ -36,8 +36,8 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen w-full bg-[#181a1b] text-gray-100 flex flex-col items-center justify-center px-1 py-1 sm:px-2 sm:py-2 selection:bg-emerald-500 selection:text-black">
-      <main className="w-full flex-1 flex items-center justify-center">
+    <div className="h-screen h-[100dvh] max-h-screen max-h-[100dvh] w-full bg-[#181a1b] text-gray-100 flex flex-col overflow-hidden px-1 py-1 sm:px-2 sm:py-2 selection:bg-emerald-500 selection:text-black">
+      <main className="w-full flex-1 flex flex-col items-center justify-center overflow-hidden min-h-0">
         <PaceController
           onOpenTelemetry={() => setIsTelemetryOpen(true)}
           onOpenAndroidCode={() => setIsAndroidCodeOpen(true)}
