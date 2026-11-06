@@ -227,28 +227,14 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   const currentRsc = encodeRscPacket(speed);
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      {/* Outer Shell Card */}
-      <div className="bg-[#181a1b] border border-[#2e3235] rounded-3xl p-4 sm:p-5 shadow-2xl space-y-3.5">
-        {/* Top Header */}
-        <header className="flex items-center justify-between pb-0.5">
-          {/* Logo & Brand */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400/20 to-emerald-600/10 border border-emerald-400/30 flex items-center justify-center p-1.5 shadow-sm">
-              <img
-                src="/assets/aistudio/favicon_31a5a0fd.png"
-                alt="PaceCast logo"
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <div>
-              <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-1.5">
-                PaceCast
-              </h1>
-              <p className="text-[10px] font-medium text-neutral-400 leading-none">
-                Garmin 255 BLE Foot Pod
-              </p>
-            </div>
+    <div className="w-full max-w-lg mx-auto flex-1 flex flex-col justify-center py-2 sm:py-4 px-3 sm:px-6 space-y-3.5">
+      {/* Top Header */}
+      <header className="flex items-center justify-between pb-0.5">
+          {/* Logo & Brand: Clean PaceCast title */}
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-white">
+              PaceCast
+            </h1>
           </div>
 
           {/* Header Action Tools */}
@@ -267,10 +253,20 @@ export const PaceController: React.FC<PaceControllerProps> = ({
               <Sun className="w-4 h-4" />
             </button>
 
+            {/* BLE Telemetry Inspector Button */}
+            <button
+              onClick={onOpenTelemetry}
+              className="p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
+              title="Inspect live BLE 0x1814 RSC GATT telemetry"
+              aria-label="Inspect BLE telemetry"
+            >
+              <Radio className="w-4 h-4" />
+            </button>
+
             {/* Android Kotlin Code Studio Button */}
             <button
               onClick={onOpenAndroidCode}
-              className="p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition"
+              className="p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
               title="View Kotlin & Compose Android source code"
               aria-label="View Android source code"
             >
@@ -484,36 +480,6 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             <CornerDownLeft className="w-4 h-4" />
           </button>
         </section>
-
-        {/* Live GATT Telemetry & Packet Strip */}
-        <div
-          onClick={onOpenTelemetry}
-          className="p-3 rounded-xl bg-[#141517] border border-[#2e3235] hover:border-emerald-500/40 transition cursor-pointer group"
-          title="Click to view live BLE packet telemetry"
-        >
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  isBroadcasting ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-600'
-                }`}
-              />
-              <span className="font-semibold text-neutral-300 group-hover:text-white transition">
-                BLE Foot Pod 0x1814
-              </span>
-            </div>
-            <span className="font-mono text-emerald-400 font-bold text-xs tracking-wider">
-              {currentRsc.hexPayload}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-[10px] text-neutral-400 mt-1 font-mono">
-            <span>{currentRsc.speedMs.toFixed(2)} m/s (Raw: {currentRsc.rawSpeed})</span>
-            <span className="text-emerald-500 flex items-center gap-0.5 group-hover:underline">
-              Inspect Telemetry <ArrowRight className="w-3 h-3" />
-            </span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

@@ -127,22 +127,18 @@ fun PaceCastScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(CharcoalOuter)
-            .padding(16.dp),
+            .background(CharcoalCard)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(
             modifier = Modifier
-                .widthIn(max = 440.dp)
+                .widthIn(max = 480.dp)
                 .fillMaxSize()
-                .clip(RoundedCornerShape(24.dp))
-                .background(CharcoalCard)
-                .border(1.dp, CharcoalBorder, RoundedCornerShape(24.dp))
-                .padding(20.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header with PaceCast logo & interactive status pill
+            // Header with PaceCast title & interactive status pill
             HeaderSection(
                 isAdvertising = isAdvertising,
                 deviceCount = deviceCount,
@@ -169,13 +165,6 @@ fun PaceCastScreen(
                 onKeyPress = { key -> handleKeyPress(key) },
                 onSubmit = { submitKeypadPace() }
             )
-
-            // Live BLE Foot Pod Monitor (Garmin 255 RSC GATT info)
-            BleTelemetryFooter(
-                isAdvertising = isAdvertising,
-                lastHex = lastHex,
-                speedKmh = currentSpeed
-            )
         }
     }
 }
@@ -191,40 +180,14 @@ private fun HeaderSection(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Logo & Title
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MintGreen.copy(alpha = 0.15f))
-                    .border(1.dp, MintGreen.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "⚡",
-                    fontSize = 18.sp
-                )
-            }
-            Column {
-                Text(
-                    text = "PaceCast",
-                    color = TextPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = (-0.5).sp
-                )
-                Text(
-                    text = "Garmin 255 Foot Pod",
-                    color = TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
+        // Title (Clean PaceCast, no icon or subtitle)
+        Text(
+            text = "PaceCast",
+            color = TextPrimary,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = (-0.5).sp
+        )
 
         // Interactive Status Pill
         val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -652,54 +615,4 @@ private fun Keypad3DButton(
     }
 }
 
-@Composable
-private fun BleTelemetryFooter(
-    isAdvertising: Boolean,
-    lastHex: String,
-    speedKmh: Float
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF141517))
-            .border(1.dp, CharcoalBorder, RoundedCornerShape(14.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "GATT RSC (0x1814) 1Hz Loop",
-                color = TextSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = if (isAdvertising) "ACTIVE" else "IDLE",
-                color = if (isAdvertising) MintGreen else TextMuted,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Little-Endian Payload:",
-                color = TextMuted,
-                fontSize = 11.sp
-            )
-            Text(
-                text = lastHex,
-                color = MintGreen,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
+

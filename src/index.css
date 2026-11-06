@@ -2,7 +2,6 @@
 
 @layer base {
   :root {
-    --bg-charcoal-outer: #3a3d40;
     --bg-charcoal-card: #181a1b;
     --accent-mint: #4ade80;
     --accent-mint-bright: #5ce699;
@@ -10,7 +9,7 @@
   }
 
   body {
-    background-color: var(--bg-charcoal-outer);
+    background-color: #181a1b;
     color: #f3f4f6;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     user-select: none;
