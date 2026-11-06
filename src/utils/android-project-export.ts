@@ -625,6 +625,99 @@ zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists`,
   },
   {
+    path: 'gradle.properties',
+    name: 'gradle.properties',
+    language: 'properties',
+    content: `org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+android.nonTransitiveRClass=true`,
+  },
+  {
+    path: 'app/src/main/res/values/strings.xml',
+    name: 'res/values/strings.xml',
+    language: 'xml',
+    content: `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PaceCast</string>
+</resources>`,
+  },
+  {
+    path: 'app/src/main/res/values/colors.xml',
+    name: 'res/values/colors.xml',
+    language: 'xml',
+    content: `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#181A1B</color>
+    <color name="mint_green">#4ADE80</color>
+</resources>`,
+  },
+  {
+    path: 'app/src/main/res/drawable/ic_launcher_background.xml',
+    name: 'res/drawable/ic_launcher_background.xml',
+    language: 'xml',
+    content: `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#181A1B"
+        android:pathData="M0,0h108v108h-108z"/>
+</vector>`,
+  },
+  {
+    path: 'app/src/main/res/drawable/ic_launcher_foreground.xml',
+    name: 'res/drawable/ic_launcher_foreground.xml',
+    language: 'xml',
+    content: `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.65"
+        android:scaleY="0.65"
+        android:translateX="18.9"
+        android:translateY="18.9">
+        <path
+            android:strokeColor="#4ADE80"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:pathData="M 24 64 A 30 30 0 1 1 84 64" />
+        <path
+            android:strokeColor="#5CE699"
+            android:strokeWidth="4"
+            android:strokeLineCap="round"
+            android:pathData="M 54 54 L 72 36" />
+        <path
+            android:fillColor="#4ADE80"
+            android:pathData="M 54 54 m -5 0 a 5 5 0 1 0 10 0 a 5 5 0 1 0 -10 0" />
+    </group>
+</vector>`,
+  },
+  {
+    path: 'app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml',
+    name: 'res/mipmap/ic_launcher.xml',
+    language: 'xml',
+    content: `<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>`,
+  },
+  {
+    path: 'app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml',
+    name: 'res/mipmap/ic_launcher_round.xml',
+    language: 'xml',
+    content: `<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>`,
+  },
+  {
     path: 'README.md',
     name: 'README.md',
     language: 'markdown',
