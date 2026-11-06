@@ -106,14 +106,25 @@ export const AndroidCodeStudio: React.FC<AndroidCodeStudioProps> = ({ isOpen, on
               </button>
             ))}
 
-            {/* Quick Garmin Instructions Box */}
-            <div className="mt-6 p-3 rounded-xl bg-[#1e2022] border border-[#2a2d30] text-xs space-y-1.5">
-              <div className="font-bold text-white flex items-center gap-1.5">
+            {/* GitHub Actions CI/CD Card */}
+            <div className="mt-4 p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs space-y-1.5">
+              <div className="font-bold text-emerald-400 flex items-center gap-1.5">
                 <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                Quick Run
+                GitHub Actions CI
+              </div>
+              <p className="text-[11px] text-neutral-300 leading-relaxed">
+                Pushes to GitHub trigger automated APK builds via <span className="font-mono text-emerald-400">build-apk.yml</span>. Download the APK under GitHub <strong>Actions &gt; Artifacts</strong>.
+              </p>
+            </div>
+
+            {/* Quick Garmin Instructions Box */}
+            <div className="mt-3 p-3 rounded-xl bg-[#1e2022] border border-[#2a2d30] text-xs space-y-1.5">
+              <div className="font-bold text-white flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5 text-blue-400" />
+                Garmin 255 Pairing
               </div>
               <p className="text-[11px] text-neutral-400 leading-relaxed">
-                Open in Android Studio (Hedgehog+), build APK, run on your Android phone, then pair your Garmin Forerunner 255 as a <strong>Foot Pod (FP)</strong>.
+                Install APK on phone, start broadcasting, then go to Garmin: <strong>Sensors &gt; Add New &gt; FP Foot Pod</strong>.
               </p>
             </div>
           </div>

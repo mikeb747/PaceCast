@@ -514,11 +514,133 @@ dependencies {
 }`,
   },
   {
+    path: '.github/workflows/build-apk.yml',
+    name: 'build-apk.yml (GitHub Actions)',
+    language: 'yaml',
+    content: `name: Build PaceCast Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-apk.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build Type'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release-unsigned
+          - both
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Gradle Wrapper
+        run: |
+          cd android
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            gradle wrapper --gradle-version 8.5 || true
+          fi
+          chmod +x gradlew
+
+      - name: Build Debug APK
+        if: \${{ github.event.inputs.build_type == 'debug' || github.event.inputs.build_type == 'both' || github.event_name != 'workflow_dispatch' }}
+        run: |
+          cd android
+          ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Build Release APK (Unsigned)
+        if: \${{ github.event.inputs.build_type == 'release-unsigned' || github.event.inputs.build_type == 'both' }}
+        run: |
+          cd android
+          ./gradlew assembleRelease --stacktrace --no-daemon
+
+      - name: Upload Debug APK Artifact
+        if: \${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: PaceCast-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload Release APK Artifact
+        if: \${{ github.event.inputs.build_type == 'release-unsigned' || github.event.inputs.build_type == 'both' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: PaceCast-release-unsigned-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: ignore
+          retention-days: 30`,
+  },
+  {
+    path: 'build.gradle.kts',
+    name: 'build.gradle.kts (Root)',
+    language: 'gradle',
+    content: `plugins {
+    id("com.android.application") version "8.2.2" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+}`,
+  },
+  {
+    path: 'gradle/wrapper/gradle-wrapper.properties',
+    name: 'gradle-wrapper.properties',
+    language: 'properties',
+    content: `distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\\://services.gradle.org/distributions/gradle-8.5-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists`,
+  },
+  {
     path: 'README.md',
     name: 'README.md',
     language: 'markdown',
     content: `# PaceCast Android Project
-Built for pairing with Garmin Forerunner 255 as a Running Speed & Cadence (RSC) foot pod.`,
+Built for pairing with Garmin Forerunner 255 as a Running Speed & Cadence (RSC) foot pod.
+
+## Automated APK Builds with GitHub Actions
+
+Every push or pull request to \`main\` or \`master\` automatically builds a ready-to-install debug APK (\`app-debug.apk\`) and uploads it to GitHub Actions Artifacts.
+
+### How to Download Built APK from GitHub Actions:
+1. Push your repository to GitHub.
+2. Go to the **Actions** tab on your GitHub repository.
+3. Click on the latest **Build PaceCast Android APK** workflow run.
+4. Scroll down to the **Artifacts** section at the bottom.
+5. Click **PaceCast-debug-apk** to download the built \`.apk\` directly to your phone or PC!
+6. Transfer the \`.apk\` to your Android phone and install.`,
   },
 ];
 

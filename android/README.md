@@ -31,3 +31,15 @@ PaceCast transforms your Android phone into a high-precision Bluetooth Low Energ
    - Go to **Settings > Sensors & Accessories > Add New > FP - Foot Pod**.
    - Select **PaceCast**.
    - Start an Indoor Run or Treadmill activity! Speed and pace update with zero lag.
+
+## Automated APK Builds with GitHub Actions
+
+The repository includes a GitHub Actions workflow (`.github/workflows/build-apk.yml`) that compiles the APK automatically on every push, pull request, or manual trigger.
+
+### How to Download Built APK from GitHub Actions:
+1. Push your repository to GitHub on `main` or `master`.
+2. Go to the **Actions** tab in your GitHub repository.
+3. Click on the latest **Build PaceCast Android APK** run.
+4. Scroll to **Artifacts** at the bottom of the summary page.
+5. Click **PaceCast-debug-apk** to download `app-debug.apk` directly!
+6. Copy the `.apk` to your phone and install.
