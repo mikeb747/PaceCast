@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-charcoal-outer: #3a3d40;
+    --bg-charcoal-card: #181a1b;
+    --accent-mint: #4ade80;
+    --accent-mint-bright: #5ce699;
+    --accent-mint-dark: #15803d;
+  }
+
+  body {
+    background-color: var(--bg-charcoal-outer);
+    color: #f3f4f6;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+}
+
+/* Brutalist 3D tactile button utilities */
+.btn-3d-mint {
+  background-color: #4ade80;
+  color: #052e16;
+  border-bottom: 5px solid #16a34a;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  transition: all 0.08s ease;
+}
+
+.btn-3d-mint:active:not(:disabled) {
+  transform: translateY(3px);
+  border-bottom-width: 2px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.btn-3d-neutral {
+  background-color: #272a2d;
+  color: #f3f4f6;
+  border-bottom: 5px solid #121314;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  transition: all 0.08s ease;
+}
+
+.btn-3d-neutral:active:not(:disabled) {
+  transform: translateY(3px);
+  border-bottom-width: 2px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.btn-3d-keypad {
+  background-color: #222527;
+  color: #ffffff;
+  border-bottom: 4px solid #111213;
+  box-shadow: 0 3px 5px -1px rgba(0, 0, 0, 0.35);
+  transition: all 0.08s ease;
+}
+
+.btn-3d-keypad:active:not(:disabled) {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+  background-color: #2b2f32;
+}
+
+/* Pulsing LED dot */
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 12px #4ade80;
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+    box-shadow: 0 0 4px #4ade80;
+  }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #181a1b;
+}
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4ade80;
+}
