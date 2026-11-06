@@ -79,6 +79,9 @@ fun PaceCastScreen(
     var previousSpeed by remember { mutableFloatStateOf(6.0f) }
     var keypadBuffer by remember { mutableStateOf("") }
 
+    // Confirmation dialog state for turning off broadcasting
+    var showStopBroadcastingDialog by remember { mutableStateOf(false) }
+
     // Unit System state: "metric" (km/h & /km) vs "imperial" (mph & /mi)
     var unitSystem by remember {
         mutableStateOf(prefs.getString("unit_system", "metric") ?: "metric")
@@ -113,12 +116,10 @@ fun PaceCastScreen(
     val coroutineScope = rememberCoroutineScope()
     var debounceJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
-    // Keep BleRscServer synchronized with current speed (always in km/h for standard BLE RSC 0x2A53)
     LaunchedEffect(currentSpeed) {
         bleServer.currentSpeedKmh = currentSpeed
     }
 
-    // Helper functions for pace transitions
     fun applyAdjustment(delta: Float) {
         if (!isAdjustmentBurstActive) {
             previousSpeed = currentSpeed
@@ -221,7 +222,7 @@ fun PaceCastScreen(
         }
     }
 
-    // Pure black background to seamlessly blend into phone top bar / notch
+    // Pure black background to blend into phone status bar
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -236,14 +237,20 @@ fun PaceCastScreen(
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Header: Intrinsic height (wrapContentHeight), 15% larger title & pill
+            // Header with status pill (confirmation dialog on turn-off)
             HeaderSection(
                 isAdvertising = isAdvertising,
                 deviceCount = deviceCount,
-                onToggle = onToggleAdvertising
+                onToggle = {
+                    if (isAdvertising) {
+                        showStopBroadcastingDialog = true
+                    } else {
+                        onToggleAdvertising()
+                    }
+                }
             )
 
-            // Current Pace Card: Intrinsic height, tap to toggle units, zero padding under/sides of -/+ buttons
+            // Current Pace Card: Compacted height, inline labels, flush +/- buttons
             CurrentPaceCard(
                 speedKmh = currentSpeed,
                 unitSystem = unitSystem,
@@ -251,7 +258,7 @@ fun PaceCastScreen(
                 onAdjust = { delta -> applyAdjustment(delta) }
             )
 
-            // Speed Presets Section: Intrinsic height (52dp buttons, persisted & immediate updates)
+            // Speed Presets Section: 52dp buttons
             PresetsSection(
                 currentSpeed = currentSpeed,
                 presets = presets,
@@ -259,7 +266,7 @@ fun PaceCastScreen(
                 onLongPressPreset = { index -> openPresetEditor(index) }
             )
 
-            // Switch Card & Keypad Display Row: Intrinsic height, Switch text on top, 20% larger speed, #545454 typed box
+            // Switch Card & Keypad Display Row: Switch inside box, #545454 typed buffer
             RecallAndDisplayRow(
                 previousSpeed = previousSpeed,
                 keypadBuffer = keypadBuffer,
@@ -267,7 +274,7 @@ fun PaceCastScreen(
                 onRecall = { swapPaces() }
             )
 
-            // Exact Pace Numpad: Takes all remaining vertical space (Modifier.weight(1f))
+            // Exact Pace Numpad: Takes all remaining vertical space
             KeypadSection(
                 keypadBuffer = keypadBuffer,
                 unitSystem = unitSystem,
@@ -277,6 +284,67 @@ fun PaceCastScreen(
                     .weight(1f)
                     .fillMaxWidth()
             )
+        }
+
+        // Confirmation Dialog when turning off broadcasting
+        if (showStopBroadcastingDialog) {
+            Dialog(onDismissRequest = { showStopBroadcastingDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = CharcoalCard,
+                    border = BorderStroke(1.dp, CharcoalBorder),
+                    modifier = Modifier.fillMaxWidth().padding(8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Text(
+                            text = "Turn Off Broadcasting?",
+                            color = TextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Text(
+                            text = "Are you sure you want to stop broadcasting? Your Garmin watch or treadmill will lose connection to the foot pod.",
+                            color = TextSecondary,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { showStopBroadcastingDialog = false },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f).height(44.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
+                                border = BorderStroke(1.dp, CharcoalBorder)
+                            ) {
+                                Text("Cancel", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+
+                            Button(
+                                onClick = {
+                                    showStopBroadcastingDialog = false
+                                    onToggleAdvertising()
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f).height(44.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFEF4444),
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Text("Turn Off", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Edit Preset Dialog (0.0 - 24.0 km/h with 0.1 increments)
@@ -292,7 +360,6 @@ fun PaceCastScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Header
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -323,7 +390,6 @@ fun PaceCastScreen(
                             }
                         }
 
-                        // Target Speed Preview Box
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -366,7 +432,6 @@ fun PaceCastScreen(
                             }
                         }
 
-                        // Quick Nudges Row (-0.5, -0.1, +0.1, +0.5)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -394,7 +459,6 @@ fun PaceCastScreen(
                             }
                         }
 
-                        // 3x4 Numeric Keypad
                         val keys = listOf(
                             listOf("1", "2", "3"),
                             listOf("4", "5", "6"),
@@ -418,7 +482,6 @@ fun PaceCastScreen(
                             }
                         }
 
-                        // Save and Cancel buttons
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -468,7 +531,6 @@ private fun HeaderSection(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Title (Clean PaceCast, 15% larger: 28sp)
         Text(
             text = "PaceCast",
             color = TextPrimary,
@@ -477,7 +539,6 @@ private fun HeaderSection(
             letterSpacing = (-0.5).sp
         )
 
-        // Interactive Status Pill (15% larger: 14sp)
         val infiniteTransition = rememberInfiniteTransition(label = "pulse")
         val pulseScale by infiniteTransition.animateFloat(
             initialValue = 0.85f,
@@ -540,16 +601,15 @@ private fun CurrentPaceCard(
             .border(1.dp, CharcoalBorder, RoundedCornerShape(16.dp)),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Top display area: Tap to switch km/h & /km <-> mph & /mi (compacted height)
+        // Top display area: Tap to switch km/h & /km <-> mph & /mi (compacted height, valid padding parameters)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onToggleUnit() }
-                .padding(horizontal = 10.dp, top = 6.dp, bottom = 3.dp),
+                .padding(start = 10.dp, top = 6.dp, end = 10.dp, bottom = 3.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            // Speed & Pace Readouts
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -634,7 +694,7 @@ private fun CurrentPaceCard(
             }
         }
 
-        // Tactile Brutalist 3D Adjuster Buttons: ZERO padding under, left of '-', and right of '+'
+        // Adjuster Buttons: ZERO padding under, left of '-', and right of '+'
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -642,7 +702,6 @@ private fun CurrentPaceCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Minus Button: flush to card bottom & left edge
             FlushMinusButton(
                 modifier = Modifier
                     .weight(1f)
@@ -651,7 +710,6 @@ private fun CurrentPaceCard(
                 onHoldTick = { onAdjust(-0.5f) }
             )
 
-            // Middle step indicator
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(horizontal = 6.dp)
@@ -669,7 +727,6 @@ private fun CurrentPaceCard(
                 )
             }
 
-            // Plus Button: flush to card bottom & right edge
             FlushPlusButton(
                 modifier = Modifier
                     .weight(1f)
@@ -807,7 +864,6 @@ private fun PresetsSection(
             )
         }
 
-        // 6 Preset buttons in a horizontal row (Exactly 52.dp high)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -838,13 +894,12 @@ private fun PresetButton(
     val coroutineScope = rememberCoroutineScope()
     val label = if (preset % 1f == 0f) String.format(Locale.US, "%.0f", preset) else String.format(Locale.US, "%.1f", preset)
 
-    // Using rememberUpdatedState avoids stale closures when preset or onClick updates
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
 
     Box(
         modifier = modifier
-            .height(52.dp) // Exactly 52 pixels high
+            .height(52.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (isSelected) MintGreenDark else Color(0xFF111213))
             .padding(bottom = if (isPressed) 1.dp else 3.dp)
@@ -855,7 +910,7 @@ private fun PresetButton(
                     onPress = {
                         isPressed = true
                         val holdJob = coroutineScope.launch {
-                            delay(1000L) // 1 second hold to trigger edit
+                            delay(1000L)
                             currentOnLongPress()
                         }
                         tryAwaitRelease()
@@ -894,7 +949,7 @@ private fun RecallAndDisplayRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Switch Box with 'Switch' text inside next to the icon (same 58.dp height)
+        // Switch Box with 'Switch' text inside next to the icon
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -948,7 +1003,7 @@ private fun RecallAndDisplayRow(
             }
         }
 
-        // Keypad Display Box (Typed text removed, styled with #545454, same 58.dp height)
+        // Keypad Display Box (#545454 background)
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1002,7 +1057,6 @@ private fun KeypadSection(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        // 4 equal-height rows for number keys (each weight(1f))
         keys.forEach { row ->
             Row(
                 modifier = Modifier
@@ -1022,7 +1076,6 @@ private fun KeypadSection(
             }
         }
 
-        // 1 equal-height row for Enter Pace button (weight(1f))
         val isEnabled = keypadBuffer.isNotEmpty()
         Button(
             onClick = { if (isEnabled) onSubmit() },
@@ -1080,7 +1133,7 @@ private fun Keypad3DButton(
         Text(
             text = text,
             color = Color.White,
-            fontSize = 22.sp, // 22sp as requested
+            fontSize = 22.sp,
             fontWeight = FontWeight.Bold
         )
     }

@@ -3,14 +3,15 @@ package com.pacecast.app.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme = darkColorScheme(
     primary = MintGreen,
     onPrimary = CharcoalCard,
     secondary = MintGreenBright,
     onSecondary = CharcoalCard,
-    background = androidx.compose.ui.graphics.Color.Black,
-    surface = androidx.compose.ui.graphics.Color.Black,
+    background = Color.Black,
+    surface = Color.Black,
     onBackground = TextPrimary,
     onSurface = TextPrimary
 )

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Radio, CheckCircle, Info, Activity, Clock, ShieldCheck, Zap } from 'lucide-react';
+import React from 'react';
+import { X, Radio, Zap } from 'lucide-react';
 import { RscPacket } from '../utils/pacecast-logic';
 
 interface BleTelemetryModalProps {
@@ -97,134 +97,65 @@ export const BleTelemetryModal: React.FC<BleTelemetryModalProps> = ({
                 </span>
               </div>
 
-              {/* 4 Bytes breakdown table */}
               <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                <div className="p-2 rounded bg-[#222527] border border-[#2e3235]">
-                  <div className="text-[10px] text-neutral-400">Byte 0 (Flags)</div>
-                  <div className="text-sm font-bold text-white mt-1">
-                    0x{currentPacket.bytes[0].toString(16).padStart(2, '0').toUpperCase()}
-                  </div>
-                  <div className="text-[9px] text-neutral-400 mt-0.5">Speed/Cadence only</div>
+                <div className="p-2 rounded bg-[#1c1e20] border border-[#282b2e]">
+                  <p className="text-[10px] text-neutral-400">Byte 0 (Flags)</p>
+                  <p className="font-bold text-white text-sm mt-0.5">0x00</p>
+                  <p className="text-[10px] text-neutral-500">Speed only</p>
                 </div>
-                <div className="p-2 rounded bg-[#222527] border border-emerald-500/40 bg-emerald-500/5">
-                  <div className="text-[10px] text-emerald-400">Byte 1 (Speed LSB)</div>
-                  <div className="text-sm font-bold text-emerald-300 mt-1">
+                <div className="p-2 rounded bg-[#1c1e20] border border-[#282b2e]">
+                  <p className="text-[10px] text-neutral-400">Byte 1 (LSB)</p>
+                  <p className="font-bold text-emerald-400 text-sm mt-0.5">
                     0x{currentPacket.bytes[1].toString(16).padStart(2, '0').toUpperCase()}
-                  </div>
-                  <div className="text-[9px] text-neutral-400 mt-0.5">
-                    {currentPacket.bytes[1]}
-                  </div>
+                  </p>
+                  <p className="text-[10px] text-neutral-500">Speed low</p>
                 </div>
-                <div className="p-2 rounded bg-[#222527] border border-emerald-500/40 bg-emerald-500/5">
-                  <div className="text-[10px] text-emerald-400">Byte 2 (Speed MSB)</div>
-                  <div className="text-sm font-bold text-emerald-300 mt-1">
+                <div className="p-2 rounded bg-[#1c1e20] border border-[#282b2e]">
+                  <p className="text-[10px] text-neutral-400">Byte 2 (MSB)</p>
+                  <p className="font-bold text-emerald-400 text-sm mt-0.5">
                     0x{currentPacket.bytes[2].toString(16).padStart(2, '0').toUpperCase()}
-                  </div>
-                  <div className="text-[9px] text-neutral-400 mt-0.5">
-                    {currentPacket.bytes[2]}
-                  </div>
+                  </p>
+                  <p className="text-[10px] text-neutral-500">Speed high</p>
                 </div>
-                <div className="p-2 rounded bg-[#222527] border border-[#2e3235]">
-                  <div className="text-[10px] text-neutral-400">Byte 3 (Cadence)</div>
-                  <div className="text-sm font-bold text-white mt-1">
-                    0x{currentPacket.bytes[3].toString(16).padStart(2, '0').toUpperCase()}
-                  </div>
-                  <div className="text-[9px] text-neutral-400 mt-0.5">0 RPM</div>
-                </div>
-              </div>
-
-              {/* Conversion Math Calculation Box */}
-              <div className="mt-3 text-xs text-neutral-400 pt-2 border-t border-[#25282a] flex flex-col gap-1">
-                <div className="flex justify-between">
-                  <span>Target Treadmill Speed:</span>
-                  <span className="text-white font-bold">{currentPacket.speedKmh.toFixed(1)} km/h</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Speed in meters/second:</span>
-                  <span className="text-neutral-300">
-                    {currentPacket.speedKmh} / 3.6 = <strong className="text-white">{currentPacket.speedMs} m/s</strong>
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Unsigned 16-bit Raw Speed (1/256 m/s):</span>
-                  <span className="text-emerald-400 font-bold">
-                    round({currentPacket.speedMs} × 256) = {currentPacket.rawSpeed} (0x{currentPacket.rawSpeed.toString(16).padStart(4, '0').toUpperCase()})
-                  </span>
+                <div className="p-2 rounded bg-[#1c1e20] border border-[#282b2e]">
+                  <p className="text-[10px] text-neutral-400">Byte 3 (Cadence)</p>
+                  <p className="font-bold text-white text-sm mt-0.5">0x00</p>
+                  <p className="text-[10px] text-neutral-500">0 RPM</p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Garmin Forerunner 255 GATT Specifications */}
+          {/* Packet Stream History */}
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-              GATT Specifications for Garmin Forerunner 255
+            <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
+              Recent 1 Hz Broadcast Log (Garmin 255 Stream)
             </h3>
-            <div className="p-4 rounded-xl bg-[#222527] border border-[#2e3235] space-y-2 text-xs">
-              <div className="flex items-start gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
-                <div>
-                  <span className="text-white font-semibold">Service 0x1814 (Running Speed & Cadence):</span>
-                  <p className="text-neutral-400">Standard Bluetooth SIG primary service for foot pod sensors.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
-                <div>
-                  <span className="text-white font-semibold">Characteristic 0x2A54 (RSC Feature - Read):</span>
-                  <p className="text-neutral-400">
-                    Returns <code className="text-emerald-400 bg-black/40 px-1 py-0.5 rounded">[0x00, 0x00]</code> specifying instantaneous speed and cadence supported.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
-                <div>
-                  <span className="text-white font-semibold">Characteristic 0x2A53 & CCCD 0x2902 (Notify):</span>
-                  <p className="text-neutral-400">
-                    When Garmin writes 0x0001 to CCCD 0x2902, the server ACKs with <code className="text-emerald-400 bg-black/40 px-1 py-0.5 rounded">GATT_SUCCESS</code> and pushes 1Hz notifications.
-                  </p>
-                </div>
+            <div className="rounded-xl border border-[#2e3235] bg-[#141517] overflow-hidden">
+              <div className="max-h-48 overflow-y-auto divide-y divide-[#25282a] font-mono text-xs">
+                {packetHistory.length === 0 ? (
+                  <div className="p-4 text-center text-neutral-500">No packets broadcast yet</div>
+                ) : (
+                  packetHistory
+                    .slice()
+                    .reverse()
+                    .map((item) => (
+                      <div
+                        key={item.id}
+                        className="p-2.5 flex items-center justify-between hover:bg-white/[0.02]"
+                      >
+                        <span className="text-neutral-400">{item.timestamp}</span>
+                        <span className="font-bold text-emerald-400">{item.packet.hexPayload}</span>
+                        <span className="text-neutral-300">
+                          {item.packet.speedKmh.toFixed(1)} km/h ({item.packet.speedMs.toFixed(2)}{' '}
+                          m/s)
+                        </span>
+                      </div>
+                    ))
+                )}
               </div>
             </div>
           </div>
-
-          {/* Live Packet History Log */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-amber-400" />
-              1 Hz Broadcast Transmission History
-            </h3>
-            <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 rounded-xl bg-[#141517] border border-[#2e3235] font-mono text-xs">
-              {packetHistory.length === 0 ? (
-                <div className="text-center py-4 text-neutral-500">
-                  Waiting for broadcast ticker...
-                </div>
-              ) : (
-                packetHistory.slice(-8).reverse().map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="flex items-center justify-between px-2.5 py-1 rounded bg-[#1e2022] border border-[#2a2d30]"
-                  >
-                    <span className="text-neutral-400">{entry.timestamp}</span>
-                    <span className="text-neutral-300">{entry.packet.speedKmh.toFixed(1)} km/h</span>
-                    <span className="text-emerald-400 font-bold">{entry.packet.hexPayload}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-3 bg-[#222527] border-t border-[#2e3235] flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 text-xs font-semibold text-white bg-neutral-700 hover:bg-neutral-600 rounded-lg transition"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>

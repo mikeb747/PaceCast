@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Download, Copy, Check, FileCode, Smartphone, Terminal, ExternalLink } from 'lucide-react';
+import { X, Download, Copy, Check, Smartphone } from 'lucide-react';
 import { ANDROID_PROJECT_FILES, generateAndroidZip } from '../utils/android-project-export';
 
 interface AndroidCodeStudioProps {
@@ -58,103 +58,81 @@ export const AndroidCodeStudio: React.FC<AndroidCodeStudioProps> = ({ isOpen, on
                 </span>
               </h2>
               <p className="text-xs text-neutral-400">
-                Native BLE Peripheral (RSC 0x1814) for Garmin Forerunner 255
+                Native BLE Peripheral GATT Service (0x1814 RSC)
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center space-x-2">
             <button
               onClick={handleDownloadZip}
               disabled={isDownloading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black transition shadow-sm"
-              title="Download Android Studio project ZIP"
+              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
+              title="Download Android Studio Project (.ZIP)"
             >
-              <Download className="w-4 h-4" />
-              <span>{isDownloading ? 'Packaging...' : 'Download Project ZIP'}</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>{isDownloading ? 'Zipping...' : 'Download ZIP'}</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
-              aria-label="Close dialog"
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Content Area */}
-        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-          {/* File Explorer Sidebar */}
-          <div className="w-full md:w-64 bg-[#141517] border-r border-[#2e3235] p-3 overflow-y-auto space-y-1">
-            <div className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider px-2 py-1.5">
+        {/* Workspace Layout */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* File Explorer Tree */}
+          <div className="w-64 border-r border-[#2e3235] bg-[#141517] flex flex-col">
+            <div className="p-3 border-b border-[#2e3235] text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
               Project Files
             </div>
-            {ANDROID_PROJECT_FILES.map((file, idx) => (
-              <button
-                key={file.path}
-                onClick={() => setSelectedFileIndex(idx)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono flex items-center justify-between transition ${
-                  selectedFileIndex === idx
-                    ? 'bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/30'
-                    : 'text-neutral-300 hover:bg-[#1e2022] hover:text-white border border-transparent'
-                }`}
-              >
-                <div className="flex items-center gap-2 truncate">
-                  <FileCode className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {ANDROID_PROJECT_FILES.map((file, idx) => (
+                <button
+                  key={file.path}
+                  onClick={() => setSelectedFileIndex(idx)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono transition flex items-center justify-between ${
+                    selectedFileIndex === idx
+                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold'
+                      : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'
+                  }`}
+                >
                   <span className="truncate">{file.name}</span>
-                </div>
-              </button>
-            ))}
-
-            {/* GitHub Actions CI/CD Card */}
-            <div className="mt-4 p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs space-y-1.5">
-              <div className="font-bold text-emerald-400 flex items-center gap-1.5">
-                <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                GitHub Actions CI
-              </div>
-              <p className="text-[11px] text-neutral-300 leading-relaxed">
-                Pushes to GitHub trigger automated APK builds via <span className="font-mono text-emerald-400">build-apk.yml</span>. Download the APK under GitHub <strong>Actions &gt; Artifacts</strong>.
-              </p>
-            </div>
-
-            {/* Quick Garmin Instructions Box */}
-            <div className="mt-3 p-3 rounded-xl bg-[#1e2022] border border-[#2a2d30] text-xs space-y-1.5">
-              <div className="font-bold text-white flex items-center gap-1.5">
-                <Smartphone className="w-3.5 h-3.5 text-blue-400" />
-                Garmin 255 Pairing
-              </div>
-              <p className="text-[11px] text-neutral-400 leading-relaxed">
-                Install APK on phone, start broadcasting, then go to Garmin: <strong>Sensors &gt; Add New &gt; FP Foot Pod</strong>.
-              </p>
+                  <span className="text-[10px] uppercase text-neutral-400 ml-1">
+                    {file.language}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Code Viewer */}
-          <div className="flex-1 flex flex-col bg-[#0e1011] overflow-hidden">
-            {/* Code Header */}
-            <div className="px-4 py-2.5 bg-[#181a1b] border-b border-[#2e3235] flex items-center justify-between">
-              <span className="text-xs font-mono text-neutral-300">{currentFile.path}</span>
+          <div className="flex-1 flex flex-col bg-[#111214] overflow-hidden">
+            <div className="px-4 py-2 bg-[#1a1c1e] border-b border-[#2e3235] flex items-center justify-between">
+              <span className="text-xs font-mono text-neutral-400 truncate">
+                {currentFile.path}
+              </span>
               <button
                 onClick={handleCopy}
-                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded bg-[#272a2d] hover:bg-[#34383c] text-white transition border border-[#374151]"
+                className="px-2.5 py-1 rounded bg-[#25282a] hover:bg-[#2f3235] text-neutral-300 text-xs font-mono transition flex items-center space-x-1.5"
               >
                 {copied ? (
                   <>
                     <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-emerald-400">Copied!</span>
+                    <span className="text-emerald-400">Copied</span>
                   </>
                 ) : (
                   <>
                     <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Code</span>
+                    <span>Copy</span>
                   </>
                 )}
               </button>
             </div>
-
-            {/* Code Pre Container */}
-            <div className="flex-1 p-4 overflow-auto font-mono text-xs text-neutral-200 leading-relaxed">
-              <pre className="whitespace-pre">{currentFile.content}</pre>
+            <div className="flex-1 overflow-auto p-4 font-mono text-xs text-neutral-300 leading-relaxed whitespace-pre selection:bg-emerald-500/30">
+              <code>{currentFile.content}</code>
             </div>
           </div>
         </div>

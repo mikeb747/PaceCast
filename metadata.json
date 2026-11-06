@@ -1,6 +1,8 @@
 {
-  "name": "PaceCast - BLE Running Speed & Cadence Foot Pod",
-  "description": "Precision treadmill pace controller and BLE 0x1814 RSC peripheral for Garmin Forerunner 255 with Jetpack Compose Android app.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "PaceCast",
+  "description": "Tactile BLE Running Speed and Cadence (RSC) foot pod simulator for treadmills and Garmin Forerunner 255 with GitHub Actions APK builds.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

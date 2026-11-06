@@ -2,7 +2,7 @@ package com.pacecast.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val CharcoalOuter = Color(0xFF3A3D40)
+val CharcoalOuter = Color(0xFF000000)
 val CharcoalCard = Color(0xFF181A1B)
 val CharcoalSurface = Color(0xFF222527)
 val CharcoalBorder = Color(0xFF2E3235)

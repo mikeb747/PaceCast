@@ -42,6 +42,9 @@ class MainActivity : ComponentActivity() {
 
         bleServer = BleRscServer(this)
 
+        // Start broadcasting immediately when the app is opened
+        startAdvertisingWithPermissions()
+
         setContent {
             PaceCastTheme {
                 PaceCastScreen(
@@ -54,12 +57,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun toggleAdvertisingWithPermissions() {
-        if (bleServer.isAdvertising.value) {
-            bleServer.stopAdvertising()
-            Toast.makeText(this, "BLE Advertising Stopped", Toast.LENGTH_SHORT).show()
-            return
-        }
+    private fun startAdvertisingWithPermissions() {
+        if (bleServer.isAdvertising.value) return
 
         val requiredPermissions = mutableListOf<String>()
 
@@ -84,10 +83,20 @@ class MainActivity : ComponentActivity() {
 
         if (requiredPermissions.isEmpty()) {
             bleServer.startAdvertising()
-            Toast.makeText(this, "Broadcasting to Garmin Forerunner 255...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Broadcasting started (PaceCast)", Toast.LENGTH_SHORT).show()
         } else {
             permissionLauncher.launch(requiredPermissions.toTypedArray())
         }
+    }
+
+    private fun toggleAdvertisingWithPermissions() {
+        if (bleServer.isAdvertising.value) {
+            bleServer.stopAdvertising()
+            Toast.makeText(this, "BLE Advertising Stopped", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        startAdvertisingWithPermissions()
     }
 
     override fun onDestroy() {
