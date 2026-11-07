@@ -75,22 +75,19 @@ fun PaceCastScreen(
     val isAdvertising by bleServer.isAdvertising.collectAsState()
     val deviceCount by bleServer.subscribedDeviceCount.collectAsState()
 
-    var currentSpeed by remember { mutableFloatStateOf(16.8f) }
-    var previousSpeed by remember { mutableFloatStateOf(6.0f) }
+    val currentSpeed by com.pacecast.app.ble.SpeedStateManager.currentSpeed.collectAsState()
+    val previousSpeed by com.pacecast.app.ble.SpeedStateManager.previousSpeed.collectAsState()
     var keypadBuffer by remember { mutableStateOf("") }
 
     // Confirmation dialog state for turning off broadcasting
     var showStopBroadcastingDialog by remember { mutableStateOf(false) }
 
     // Unit System state: "metric" (km/h & /km) vs "imperial" (mph & /mi)
-    var unitSystem by remember {
-        mutableStateOf(prefs.getString("unit_system", "metric") ?: "metric")
-    }
+    val unitSystem by com.pacecast.app.ble.SpeedStateManager.unitSystem.collectAsState()
 
     fun toggleUnitSystem() {
         val next = if (unitSystem == "metric") "imperial" else "metric"
-        unitSystem = next
-        prefs.edit().putString("unit_system", next).apply()
+        com.pacecast.app.ble.SpeedStateManager.setUnitSystem(next, context)
     }
 
     // Dynamic Presets (saved to SharedPreferences so they persist across app restarts)
@@ -116,13 +113,9 @@ fun PaceCastScreen(
     val coroutineScope = rememberCoroutineScope()
     var debounceJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
-    LaunchedEffect(currentSpeed) {
-        bleServer.currentSpeedKmh = currentSpeed
-    }
-
     fun applyAdjustment(delta: Float) {
         if (!isAdjustmentBurstActive) {
-            previousSpeed = currentSpeed
+            com.pacecast.app.ble.SpeedStateManager.setPreviousSpeedDirectly(currentSpeed, context)
             isAdjustmentBurstActive = true
         }
 
@@ -133,24 +126,20 @@ fun PaceCastScreen(
         }
 
         val next = ((currentSpeed + delta) * 10f).roundToInt() / 10f
-        currentSpeed = next.coerceIn(0.0f, 30.0f)
+        com.pacecast.app.ble.SpeedStateManager.updateSpeedDirectly(next.coerceIn(0.0f, 30.0f), context)
     }
 
     fun swapPaces() {
         debounceJob?.cancel()
         isAdjustmentBurstActive = false
-
-        val temp = currentSpeed
-        currentSpeed = previousSpeed
-        previousSpeed = temp
+        com.pacecast.app.ble.SpeedStateManager.swapPaces(context)
     }
 
     fun selectPreset(preset: Float) {
         debounceJob?.cancel()
         isAdjustmentBurstActive = false
 
-        previousSpeed = currentSpeed
-        currentSpeed = preset.coerceIn(0.0f, 30.0f)
+        com.pacecast.app.ble.SpeedStateManager.setSpeed(preset.coerceIn(0.0f, 30.0f), context)
         keypadBuffer = ""
     }
 
@@ -197,8 +186,7 @@ fun PaceCastScreen(
         val parsed = keypadBuffer.toFloatOrNull()
         if (parsed != null) {
             val clamped = ((parsed * 10f).roundToInt() / 10f).coerceIn(0.0f, 30.0f)
-            previousSpeed = currentSpeed
-            currentSpeed = clamped
+            com.pacecast.app.ble.SpeedStateManager.setSpeed(clamped, context)
         }
         keypadBuffer = ""
     }

@@ -45,7 +45,11 @@ class BleRscServer(private val context: Context) {
     private val _lastPayloadHex = MutableStateFlow("00 00 00 00")
     val lastPayloadHex: StateFlow<String> = _lastPayloadHex.asStateFlow()
 
-    var currentSpeedKmh: Float = 16.8f
+    var currentSpeedKmh: Float
+        get() = SpeedStateManager.currentSpeed.value
+        set(value) {
+            SpeedStateManager.updateSpeedDirectly(value, context)
+        }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var broadcastJob: Job? = null
