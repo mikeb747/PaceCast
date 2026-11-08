@@ -208,6 +208,21 @@ class BleRscServer(private val context: Context) {
             bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
         } catch (_: Exception) {}
 
+        // Explicitly cancel connection and send disconnect signal to each connected device
+        val server = gattServer
+        if (server != null) {
+            synchronized(registeredDevices) {
+                for (device in registeredDevices) {
+                    try {
+                        server.cancelConnection(device)
+                        Log.d(TAG, "Sent cancelConnection disconnect to device: ${device.address}")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to cancel connection for ${device.address}", e)
+                    }
+                }
+            }
+        }
+
         try {
             gattServer?.close()
             gattServer = null

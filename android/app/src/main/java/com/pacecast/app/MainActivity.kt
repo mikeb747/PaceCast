@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             PaceCastTheme {
-                PaceCastScreen(
+                PaceCastAppContent(
                     bleServer = bleServer,
                     onToggleAdvertising = {
                         toggleAdvertisingWithPermissions()
@@ -162,5 +162,52 @@ class MainActivity : ComponentActivity() {
         watchDetector.stop()
         bleServer.stopAdvertising()
         BleForegroundService.stopService(this)
+    }
+}
+
+@androidx.compose.runtime.Composable
+fun PaceCastAppContent(
+    bleServer: BleRscServer,
+    onToggleAdvertising: () -> Unit
+) {
+    var showSplash by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1000L)
+        showSplash = false
+    }
+
+    androidx.compose.animation.AnimatedVisibility(
+        visible = showSplash,
+        enter = androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(300))
+    ) {
+        PaceCastSplashScreen()
+    }
+
+    if (!showSplash) {
+        PaceCastScreen(
+            bleServer = bleServer,
+            onToggleAdvertising = onToggleAdvertising
+        )
+    }
+}
+
+@androidx.compose.runtime.Composable
+fun PaceCastSplashScreen() {
+    androidx.compose.foundation.layout.Box(
+        modifier = androidx.compose.ui.Modifier
+            .fillMaxSize()
+            .background(androidx.compose.ui.graphics.Color(0xFFEAFECD)),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(id = R.drawable.panda_splash),
+            contentDescription = "PaceCast Splash",
+            modifier = androidx.compose.ui.Modifier
+                .fillMaxWidth(0.75f)
+                .wrapContentHeight(),
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+        )
     }
 }
