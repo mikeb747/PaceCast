@@ -14,16 +14,11 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,7 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.core.content.ContextCompat
@@ -43,7 +38,6 @@ import com.pacecast.app.ble.SpeedStateManager
 import com.pacecast.app.ble.WatchConnectionDetector
 import com.pacecast.app.ui.PaceCastScreen
 import com.pacecast.app.ui.theme.PaceCastTheme
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -193,43 +187,54 @@ fun PaceCastAppContent(
     onToggleAdvertising: () -> Unit
 ) {
     var showSplash by remember { mutableStateOf(true) }
+    val splashScale = remember { Animatable(0.05f) }
+    val splashAlpha = remember { Animatable(1f) }
 
     LaunchedEffect(Unit) {
-        delay(1000L)
+        splashScale.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 700)
+        )
+        splashAlpha.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(durationMillis = 1000)
+        )
         showSplash = false
     }
 
-    AnimatedVisibility(
-        visible = showSplash,
-        enter = fadeIn(),
-        exit = fadeOut(animationSpec = tween(300))
-    ) {
-        PaceCastSplashScreen()
-    }
-
-    if (!showSplash) {
+    Box(modifier = Modifier.fillMaxSize()) {
         PaceCastScreen(
             bleServer = bleServer,
             onToggleAdvertising = onToggleAdvertising
         )
+
+        if (showSplash) {
+            PaceCastSplashScreen(
+                scale = splashScale.value,
+                alpha = splashAlpha.value
+            )
+        }
     }
 }
 
 @Composable
-fun PaceCastSplashScreen() {
+fun PaceCastSplashScreen(scale: Float, alpha: Float) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFEAFECD)),
+            .graphicsLayer { this.alpha = alpha },
         contentAlignment = Alignment.Center
     ) {
         Image(
             painter = painterResource(id = R.drawable.panda_splash),
             contentDescription = "PaceCast Splash",
             modifier = Modifier
-                .fillMaxWidth(0.75f)
-                .wrapContentHeight(),
-            contentScale = ContentScale.Fit
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                },
+            contentScale = ContentScale.Crop
         )
     }
 }
