@@ -538,13 +538,21 @@ private fun HeaderSection(
             label = "pulseScale"
         )
 
+        val isConnected = isAdvertising && deviceCount > 0
+
+        val (statusText, statusColor) = when {
+            isConnected -> "Connected" to MintGreen
+            isAdvertising -> "Broadcasting" to com.pacecast.app.ui.theme.ElectricBlue
+            else -> "Standby" to TextSecondary
+        }
+
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(20.dp))
-                .background(if (isAdvertising) MintGreen.copy(alpha = 0.12f) else CharcoalSurface)
+                .background(if (isAdvertising) statusColor.copy(alpha = 0.12f) else CharcoalSurface)
                 .border(
                     width = 1.dp,
-                    color = if (isAdvertising) MintGreen.copy(alpha = 0.5f) else CharcoalBorder,
+                    color = if (isAdvertising) statusColor.copy(alpha = 0.5f) else CharcoalBorder,
                     shape = RoundedCornerShape(20.dp)
                 )
                 .clickable { onToggle() }
@@ -557,11 +565,11 @@ private fun HeaderSection(
                     .size(9.dp)
                     .scale(if (isAdvertising) pulseScale else 1f)
                     .clip(CircleShape)
-                    .background(if (isAdvertising) MintGreen else TextMuted)
+                    .background(if (isAdvertising) statusColor else TextMuted)
             )
             Text(
-                text = if (isAdvertising) "Broadcasting" else "Standby",
-                color = if (isAdvertising) MintGreen else TextSecondary,
+                text = statusText,
+                color = statusColor,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
             )

@@ -21,6 +21,13 @@ object SpeedStateManager {
     private val _unitSystem = MutableStateFlow("metric")
     val unitSystem: StateFlow<String> = _unitSystem.asStateFlow()
 
+    private val _connectedDeviceCount = MutableStateFlow(0)
+    val connectedDeviceCount: StateFlow<Int> = _connectedDeviceCount.asStateFlow()
+
+    fun updateConnectedDeviceCount(count: Int) {
+        _connectedDeviceCount.value = count
+    }
+
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         _currentSpeed.value = prefs.getFloat(KEY_CURRENT_SPEED, 16.8f)

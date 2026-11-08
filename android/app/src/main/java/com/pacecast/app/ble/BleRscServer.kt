@@ -69,13 +69,65 @@ class BleRscServer(private val context: Context) {
     }
 
     private val gattServerCallback = object : BluetoothGattServerCallback() {
+        @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             super.onConnectionStateChange(device, status, newState)
+            Log.d(TAG, "Device ${device.address} connection state changed: status=$status, newState=$newState")
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 synchronized(registeredDevices) {
                     registeredDevices.remove(device)
                     _subscribedDeviceCount.value = registeredDevices.size
+                    SpeedStateManager.updateConnectedDeviceCount(registeredDevices.size)
                 }
+            }
+        }
+
+        @SuppressLint("MissingPermission")
+        override fun onCharacteristicReadRequest(
+            device: BluetoothDevice,
+            requestId: Int,
+            offset: Int,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
+            Log.d(TAG, "Read request for characteristic: ${characteristic.uuid}")
+
+            if (characteristic.uuid == RSC_FEATURE_CHAR_UUID) {
+                // RSC Feature: 2 bytes bitmask.
+                // Bit 0: Instantaneous Stride Length Measurement Supported (0)
+                // Bit 1: Total Distance Measurement Supported (0)
+                // Bit 2: Walking or Running Status Supported (0)
+                // Bit 3: Calibration Procedure Supported (0)
+                // 0x00, 0x00 = standard speed-only foot pod
+                val featureValue = byteArrayOf(0x00, 0x00)
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, featureValue)
+            } else if (characteristic.uuid == RSC_MEASUREMENT_CHAR_UUID) {
+                val value = characteristic.value ?: byteArrayOf(0x00, 0x00, 0x00, 0x00)
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+            } else {
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, offset, null)
+            }
+        }
+
+        @SuppressLint("MissingPermission")
+        override fun onDescriptorReadRequest(
+            device: BluetoothDevice,
+            requestId: Int,
+            offset: Int,
+            descriptor: BluetoothGattDescriptor
+        ) {
+            super.onDescriptorReadRequest(device, requestId, offset, descriptor)
+            Log.d(TAG, "Read request for descriptor: ${descriptor.uuid}")
+            if (descriptor.uuid == CCCD_DESCRIPTOR_UUID) {
+                val isSubscribed = synchronized(registeredDevices) { registeredDevices.contains(device) }
+                val responseValue = if (isSubscribed) {
+                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                } else {
+                    BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+                }
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, responseValue)
+            } else {
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, offset, null)
             }
         }
 
@@ -90,17 +142,22 @@ class BleRscServer(private val context: Context) {
             value: ByteArray
         ) {
             super.onDescriptorWriteRequest(device, requestId, descriptor, preparedWrite, responseNeeded, offset, value)
+            Log.d(TAG, "Write request for descriptor: ${descriptor.uuid}, value=${value.joinToString { "%02X".format(it) }}")
             if (descriptor.uuid == CCCD_DESCRIPTOR_UUID) {
                 if (Arrays.equals(value, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) {
                     synchronized(registeredDevices) {
                         registeredDevices.add(device)
                         _subscribedDeviceCount.value = registeredDevices.size
+                        SpeedStateManager.updateConnectedDeviceCount(registeredDevices.size)
                     }
+                    Log.d(TAG, "Device ${device.address} subscribed to RSC notifications. Active count: ${registeredDevices.size}")
                 } else if (Arrays.equals(value, BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE)) {
                     synchronized(registeredDevices) {
                         registeredDevices.remove(device)
                         _subscribedDeviceCount.value = registeredDevices.size
+                        SpeedStateManager.updateConnectedDeviceCount(registeredDevices.size)
                     }
+                    Log.d(TAG, "Device ${device.address} unsubscribed from RSC notifications")
                 }
                 if (responseNeeded) {
                     gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
@@ -152,6 +209,7 @@ class BleRscServer(private val context: Context) {
         synchronized(registeredDevices) {
             registeredDevices.clear()
             _subscribedDeviceCount.value = 0
+            SpeedStateManager.updateConnectedDeviceCount(0)
         }
 
         _isAdvertising.value = false

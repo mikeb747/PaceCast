@@ -116,6 +116,11 @@ class BleForegroundService : Service() {
                     updateNotification()
                 }
             }
+            launch {
+                SpeedStateManager.connectedDeviceCount.collect {
+                    updateNotification()
+                }
+            }
         }
     }
 
@@ -171,9 +176,12 @@ class BleForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val isConnected = SpeedStateManager.connectedDeviceCount.value > 0
+        val connectionStatus = if (isConnected) "Connected to Watch" else "Broadcasting"
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("PaceCast: $displaySpeed $unitLabel ($paceLabel)")
+            .setContentTitle("PaceCast: $displaySpeed $unitLabel ($paceLabel) • $connectionStatus")
             .setContentText("Prev Pace: $displayPrevSpeed $unitLabel • Tap to switch")
             .setContentIntent(openAppPendingIntent)
             .setOngoing(true)
