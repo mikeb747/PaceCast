@@ -1,6 +1,11 @@
 package com.pacecast.app
 
 import android.Manifest
+import android.app.Activity
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -9,22 +14,61 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.pacecast.app.ble.BleForegroundService
 import com.pacecast.app.ble.BleRscServer
+import com.pacecast.app.ble.SpeedStateManager
+import com.pacecast.app.ble.WatchConnectionDetector
 import com.pacecast.app.ui.PaceCastScreen
 import com.pacecast.app.ui.theme.PaceCastTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var bleServer: BleRscServer
+    private lateinit var watchDetector: WatchConnectionDetector
+
+    private val enableBluetoothLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            bleServer.startAdvertising()
+            BleForegroundService.startService(this)
+            Toast.makeText(this, "Broadcasting started (PaceCast)", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Bluetooth must be enabled to broadcast", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
-            bleServer.startAdvertising()
-            Toast.makeText(this, "BLE Advertising Started (PaceCast)", Toast.LENGTH_SHORT).show()
+            checkBluetoothAndAdvertise()
         } else {
             Toast.makeText(
                 this,
@@ -40,14 +84,23 @@ class MainActivity : ComponentActivity() {
         // Keep Screen Awake on the treadmill console
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        SpeedStateManager.init(this)
         bleServer = BleRscServer(this)
+        watchDetector = WatchConnectionDetector(this)
+        watchDetector.start()
+
+        lifecycleScope.launch {
+            watchDetector.connectedWatchName.collect { name ->
+                SpeedStateManager.updateActivePhoneLinkWatchName(name)
+            }
+        }
 
         // Start broadcasting immediately when the app is opened
         startAdvertisingWithPermissions()
 
         setContent {
             PaceCastTheme {
-                PaceCastScreen(
+                PaceCastAppContent(
                     bleServer = bleServer,
                     onToggleAdvertising = {
                         toggleAdvertisingWithPermissions()
@@ -81,17 +134,44 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requiredPermissions.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         if (requiredPermissions.isEmpty()) {
-            bleServer.startAdvertising()
-            Toast.makeText(this, "Broadcasting started (PaceCast)", Toast.LENGTH_SHORT).show()
+            checkBluetoothAndAdvertise()
         } else {
             permissionLauncher.launch(requiredPermissions.toTypedArray())
+        }
+    }
+
+    private fun checkBluetoothAndAdvertise() {
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val bluetoothAdapter = bluetoothManager?.adapter
+
+        if (bluetoothAdapter == null) {
+            Toast.makeText(this, "Bluetooth is not supported on this device", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!bluetoothAdapter.isEnabled) {
+            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+            enableBluetoothLauncher.launch(enableBtIntent)
+        } else {
+            bleServer.startAdvertising()
+            BleForegroundService.startService(this)
+            Toast.makeText(this, "Broadcasting started (PaceCast)", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun toggleAdvertisingWithPermissions() {
         if (bleServer.isAdvertising.value) {
             bleServer.stopAdvertising()
+            BleForegroundService.stopService(this)
             Toast.makeText(this, "BLE Advertising Stopped", Toast.LENGTH_SHORT).show()
             return
         }
@@ -101,6 +181,55 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        watchDetector.stop()
         bleServer.stopAdvertising()
+        BleForegroundService.stopService(this)
+    }
+}
+
+@Composable
+fun PaceCastAppContent(
+    bleServer: BleRscServer,
+    onToggleAdvertising: () -> Unit
+) {
+    var showSplash by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        delay(1000L)
+        showSplash = false
+    }
+
+    AnimatedVisibility(
+        visible = showSplash,
+        enter = fadeIn(),
+        exit = fadeOut(animationSpec = tween(300))
+    ) {
+        PaceCastSplashScreen()
+    }
+
+    if (!showSplash) {
+        PaceCastScreen(
+            bleServer = bleServer,
+            onToggleAdvertising = onToggleAdvertising
+        )
+    }
+}
+
+@Composable
+fun PaceCastSplashScreen() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFEAFECD)),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.panda_splash),
+            contentDescription = "PaceCast Splash",
+            modifier = Modifier
+                .fillMaxWidth(0.75f)
+                .wrapContentHeight(),
+            contentScale = ContentScale.Fit
+        )
     }
 }

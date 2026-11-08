@@ -74,23 +74,21 @@ fun PaceCastScreen(
 
     val isAdvertising by bleServer.isAdvertising.collectAsState()
     val deviceCount by bleServer.subscribedDeviceCount.collectAsState()
+    val activePhoneLinkWatchName by com.pacecast.app.ble.SpeedStateManager.activePhoneLinkWatchName.collectAsState()
 
-    var currentSpeed by remember { mutableFloatStateOf(16.8f) }
-    var previousSpeed by remember { mutableFloatStateOf(6.0f) }
+    val currentSpeed by com.pacecast.app.ble.SpeedStateManager.currentSpeed.collectAsState()
+    val previousSpeed by com.pacecast.app.ble.SpeedStateManager.previousSpeed.collectAsState()
     var keypadBuffer by remember { mutableStateOf("") }
 
     // Confirmation dialog state for turning off broadcasting
     var showStopBroadcastingDialog by remember { mutableStateOf(false) }
 
     // Unit System state: "metric" (km/h & /km) vs "imperial" (mph & /mi)
-    var unitSystem by remember {
-        mutableStateOf(prefs.getString("unit_system", "metric") ?: "metric")
-    }
+    val unitSystem by com.pacecast.app.ble.SpeedStateManager.unitSystem.collectAsState()
 
     fun toggleUnitSystem() {
         val next = if (unitSystem == "metric") "imperial" else "metric"
-        unitSystem = next
-        prefs.edit().putString("unit_system", next).apply()
+        com.pacecast.app.ble.SpeedStateManager.setUnitSystem(next, context)
     }
 
     // Dynamic Presets (saved to SharedPreferences so they persist across app restarts)
@@ -116,13 +114,9 @@ fun PaceCastScreen(
     val coroutineScope = rememberCoroutineScope()
     var debounceJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
-    LaunchedEffect(currentSpeed) {
-        bleServer.currentSpeedKmh = currentSpeed
-    }
-
     fun applyAdjustment(delta: Float) {
         if (!isAdjustmentBurstActive) {
-            previousSpeed = currentSpeed
+            com.pacecast.app.ble.SpeedStateManager.setPreviousSpeedDirectly(currentSpeed, context)
             isAdjustmentBurstActive = true
         }
 
@@ -133,24 +127,20 @@ fun PaceCastScreen(
         }
 
         val next = ((currentSpeed + delta) * 10f).roundToInt() / 10f
-        currentSpeed = next.coerceIn(0.0f, 30.0f)
+        com.pacecast.app.ble.SpeedStateManager.updateSpeedDirectly(next.coerceIn(0.0f, 30.0f), context)
     }
 
     fun swapPaces() {
         debounceJob?.cancel()
         isAdjustmentBurstActive = false
-
-        val temp = currentSpeed
-        currentSpeed = previousSpeed
-        previousSpeed = temp
+        com.pacecast.app.ble.SpeedStateManager.swapPaces(context)
     }
 
     fun selectPreset(preset: Float) {
         debounceJob?.cancel()
         isAdjustmentBurstActive = false
 
-        previousSpeed = currentSpeed
-        currentSpeed = preset.coerceIn(0.0f, 30.0f)
+        com.pacecast.app.ble.SpeedStateManager.setSpeed(preset.coerceIn(0.0f, 30.0f), context)
         keypadBuffer = ""
     }
 
@@ -197,8 +187,7 @@ fun PaceCastScreen(
         val parsed = keypadBuffer.toFloatOrNull()
         if (parsed != null) {
             val clamped = ((parsed * 10f).roundToInt() / 10f).coerceIn(0.0f, 30.0f)
-            previousSpeed = currentSpeed
-            currentSpeed = clamped
+            com.pacecast.app.ble.SpeedStateManager.setSpeed(clamped, context)
         }
         keypadBuffer = ""
     }
@@ -249,6 +238,11 @@ fun PaceCastScreen(
                     }
                 }
             )
+
+            // Warning banner if Garmin/Watch phone link is active and foot pod is not connected yet
+            if (isAdvertising && deviceCount == 0 && activePhoneLinkWatchName != null) {
+                GarminPhoneLinkWarningBanner(watchName = activePhoneLinkWatchName ?: "Garmin Watch")
+            }
 
             // Current Pace Card: Compacted height, inline labels, flush +/- buttons
             CurrentPaceCard(
@@ -550,13 +544,21 @@ private fun HeaderSection(
             label = "pulseScale"
         )
 
+        val isConnected = isAdvertising && deviceCount > 0
+
+        val (statusText, statusColor) = when {
+            isConnected -> "Connected" to MintGreen
+            isAdvertising -> "Broadcasting" to com.pacecast.app.ui.theme.ElectricBlue
+            else -> "Standby" to TextSecondary
+        }
+
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(20.dp))
-                .background(if (isAdvertising) MintGreen.copy(alpha = 0.12f) else CharcoalSurface)
+                .background(if (isAdvertising) statusColor.copy(alpha = 0.12f) else CharcoalSurface)
                 .border(
                     width = 1.dp,
-                    color = if (isAdvertising) MintGreen.copy(alpha = 0.5f) else CharcoalBorder,
+                    color = if (isAdvertising) statusColor.copy(alpha = 0.5f) else CharcoalBorder,
                     shape = RoundedCornerShape(20.dp)
                 )
                 .clickable { onToggle() }
@@ -569,17 +571,51 @@ private fun HeaderSection(
                     .size(9.dp)
                     .scale(if (isAdvertising) pulseScale else 1f)
                     .clip(CircleShape)
-                    .background(if (isAdvertising) MintGreen else TextMuted)
+                    .background(if (isAdvertising) statusColor else TextMuted)
             )
             Text(
-                text = if (isAdvertising) "Broadcasting" else "Standby",
-                color = if (isAdvertising) MintGreen else TextSecondary,
+                text = statusText,
+                color = statusColor,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
             )
         }
     }
 }
+
+@Composable
+private fun GarminPhoneLinkWarningBanner(watchName: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFF332005))
+            .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "⚠️",
+            fontSize = 18.sp
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "$watchName Phone Link Active",
+                color = Color(0xFFFDE68A),
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+            Text(
+                text = "If watch hangs on 'Connecting to FP', temporarily toggle off 'Phone Connection' on your watch (Controls menu), link to PaceCast, then turn it back on.",
+                color = Color(0xFFFCD34D),
+                fontSize = 11.sp,
+                lineHeight = 15.sp
+            )
+        }
+    }
+}
+
 
 @Composable
 private fun CurrentPaceCard(

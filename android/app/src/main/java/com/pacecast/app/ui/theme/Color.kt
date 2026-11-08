@@ -12,6 +12,9 @@ val MintGreenBright = Color(0xFF5CE699)
 val MintGreenDark = Color(0xFF16A34A)
 val MintGreenShadow = Color(0xFF15803D)
 
+val ElectricBlue = Color(0xFF38BDF8)
+val ElectricBlueBright = Color(0xFF60A5FA)
+
 val ButtonNeutralBg = Color(0xFF272A2D)
 val ButtonNeutralBorder = Color(0xFF121314)
 val ButtonNeutralText = Color(0xFFF3F4F6)
