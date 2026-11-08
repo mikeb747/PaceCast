@@ -26,6 +26,12 @@ class BleRscServer(private val context: Context) {
         val RSC_MEASUREMENT_CHAR_UUID: UUID = UUID.fromString("00002A53-0000-1000-8000-00805f9b34fb")
         val RSC_FEATURE_CHAR_UUID: UUID = UUID.fromString("00002A54-0000-1000-8000-00805f9b34fb")
         val CCCD_DESCRIPTOR_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+
+        // Device Information Service (Standard Bluetooth SIG) - expected by Garmin
+        val DIS_SERVICE_UUID: UUID = UUID.fromString("0000180A-0000-1000-8000-00805f9b34fb")
+        val DIS_MANUFACTURER_CHAR_UUID: UUID = UUID.fromString("00002A29-0000-1000-8000-00805f9b34fb")
+        val DIS_MODEL_CHAR_UUID: UUID = UUID.fromString("00002A24-0000-1000-8000-00805f9b34fb")
+        val DIS_FIRMWARE_CHAR_UUID: UUID = UUID.fromString("00002A26-0000-1000-8000-00805f9b34fb")
     }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -73,13 +79,21 @@ class BleRscServer(private val context: Context) {
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             super.onConnectionStateChange(device, status, newState)
             Log.d(TAG, "Device ${device.address} connection state changed: status=$status, newState=$newState")
-            if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                Log.d(TAG, "GATT Client connected: ${device.address}")
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 synchronized(registeredDevices) {
                     registeredDevices.remove(device)
                     _subscribedDeviceCount.value = registeredDevices.size
                     SpeedStateManager.updateConnectedDeviceCount(registeredDevices.size)
                 }
             }
+        }
+
+        @SuppressLint("MissingPermission")
+        override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
+            super.onMtuChanged(device, mtu)
+            Log.d(TAG, "MTU changed for ${device.address} to $mtu")
         }
 
         @SuppressLint("MissingPermission")
@@ -92,20 +106,36 @@ class BleRscServer(private val context: Context) {
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
             Log.d(TAG, "Read request for characteristic: ${characteristic.uuid}")
 
-            if (characteristic.uuid == RSC_FEATURE_CHAR_UUID) {
-                // RSC Feature: 2 bytes bitmask.
-                // Bit 0: Instantaneous Stride Length Measurement Supported (0)
-                // Bit 1: Total Distance Measurement Supported (0)
-                // Bit 2: Walking or Running Status Supported (0)
-                // Bit 3: Calibration Procedure Supported (0)
-                // 0x00, 0x00 = standard speed-only foot pod
-                val featureValue = byteArrayOf(0x00, 0x00)
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, featureValue)
-            } else if (characteristic.uuid == RSC_MEASUREMENT_CHAR_UUID) {
-                val value = characteristic.value ?: byteArrayOf(0x00, 0x00, 0x00, 0x00)
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
-            } else {
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, offset, null)
+            when (characteristic.uuid) {
+                RSC_FEATURE_CHAR_UUID -> {
+                    // RSC Feature: instantaneous speed supported
+                    val featureValue = byteArrayOf(0x00, 0x00)
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, featureValue)
+                }
+                RSC_MEASUREMENT_CHAR_UUID -> {
+                    val value = characteristic.value ?: byteArrayOf(0x00, 0x00, 0x00, 0x00)
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+                }
+                DIS_MANUFACTURER_CHAR_UUID -> {
+                    val data = "PaceCast".toByteArray(Charsets.UTF_8)
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, data)
+                }
+                DIS_MODEL_CHAR_UUID -> {
+                    val data = "FootPod-RSC".toByteArray(Charsets.UTF_8)
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, data)
+                }
+                DIS_FIRMWARE_CHAR_UUID -> {
+                    val data = "1.0.0".toByteArray(Charsets.UTF_8)
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, data)
+                }
+                else -> {
+                    val value = characteristic.value
+                    if (value != null) {
+                        gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+                    } else {
+                        gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, offset, null)
+                    }
+                }
             }
         }
 
@@ -183,12 +213,18 @@ class BleRscServer(private val context: Context) {
             .setTimeout(0)
             .build()
 
-        val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
+        // Primary 31-byte Advertising Packet: Keep lean and guaranteed to fit
+        val advertiseData = AdvertiseData.Builder()
+            .setIncludeDeviceName(false) // Don't overflow the 31-byte limit!
             .addServiceUuid(ParcelUuid(RSC_SERVICE_UUID))
             .build()
 
-        bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
+        // Scan Response Packet: Carries full device name when watch requests details
+        val scanResponseData = AdvertiseData.Builder()
+            .setIncludeDeviceName(true)
+            .build()
+
+        bluetoothLeAdvertiser?.startAdvertising(settings, advertiseData, scanResponseData, advertiseCallback)
         start1HzBroadcastLoop()
     }
 
@@ -245,6 +281,35 @@ class BleRscServer(private val context: Context) {
 
         gattServer?.addService(service)
         rscMeasurementChar = measurementChar
+
+        // Add Device Information Service (DIS 0x180A)
+        val disService = BluetoothGattService(DIS_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
+
+        val mfgChar = BluetoothGattCharacteristic(
+            DIS_MANUFACTURER_CHAR_UUID,
+            BluetoothGattCharacteristic.PROPERTY_READ,
+            BluetoothGattCharacteristic.PERMISSION_READ
+        )
+        mfgChar.value = "PaceCast".toByteArray(Charsets.UTF_8)
+        disService.addCharacteristic(mfgChar)
+
+        val modelChar = BluetoothGattCharacteristic(
+            DIS_MODEL_CHAR_UUID,
+            BluetoothGattCharacteristic.PROPERTY_READ,
+            BluetoothGattCharacteristic.PERMISSION_READ
+        )
+        modelChar.value = "FootPod-RSC".toByteArray(Charsets.UTF_8)
+        disService.addCharacteristic(modelChar)
+
+        val fwChar = BluetoothGattCharacteristic(
+            DIS_FIRMWARE_CHAR_UUID,
+            BluetoothGattCharacteristic.PROPERTY_READ,
+            BluetoothGattCharacteristic.PERMISSION_READ
+        )
+        fwChar.value = "1.0.0".toByteArray(Charsets.UTF_8)
+        disService.addCharacteristic(fwChar)
+
+        gattServer?.addService(disService)
     }
 
     private fun start1HzBroadcastLoop() {
