@@ -15,15 +15,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.pacecast.app.ble.BleForegroundService
 import com.pacecast.app.ble.BleRscServer
 import com.pacecast.app.ble.SpeedStateManager
+import com.pacecast.app.ble.WatchConnectionDetector
 import com.pacecast.app.ui.PaceCastScreen
 import com.pacecast.app.ui.theme.PaceCastTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var bleServer: BleRscServer
+    private lateinit var watchDetector: WatchConnectionDetector
 
     private val enableBluetoothLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -60,6 +64,14 @@ class MainActivity : ComponentActivity() {
 
         SpeedStateManager.init(this)
         bleServer = BleRscServer(this)
+        watchDetector = WatchConnectionDetector(this)
+        watchDetector.start()
+
+        lifecycleScope.launch {
+            watchDetector.connectedWatchName.collect { name ->
+                SpeedStateManager.updateActivePhoneLinkWatchName(name)
+            }
+        }
 
         // Start broadcasting immediately when the app is opened
         startAdvertisingWithPermissions()
@@ -147,6 +159,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        watchDetector.stop()
         bleServer.stopAdvertising()
         BleForegroundService.stopService(this)
     }

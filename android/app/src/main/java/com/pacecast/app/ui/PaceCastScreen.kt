@@ -74,6 +74,7 @@ fun PaceCastScreen(
 
     val isAdvertising by bleServer.isAdvertising.collectAsState()
     val deviceCount by bleServer.subscribedDeviceCount.collectAsState()
+    val activePhoneLinkWatchName by com.pacecast.app.ble.SpeedStateManager.activePhoneLinkWatchName.collectAsState()
 
     val currentSpeed by com.pacecast.app.ble.SpeedStateManager.currentSpeed.collectAsState()
     val previousSpeed by com.pacecast.app.ble.SpeedStateManager.previousSpeed.collectAsState()
@@ -237,6 +238,11 @@ fun PaceCastScreen(
                     }
                 }
             )
+
+            // Warning banner if Garmin/Watch phone link is active and foot pod is not connected yet
+            if (isAdvertising && deviceCount == 0 && activePhoneLinkWatchName != null) {
+                GarminPhoneLinkWarningBanner(watchName = activePhoneLinkWatchName ?: "Garmin Watch")
+            }
 
             // Current Pace Card: Compacted height, inline labels, flush +/- buttons
             CurrentPaceCard(
@@ -576,6 +582,40 @@ private fun HeaderSection(
         }
     }
 }
+
+@Composable
+private fun GarminPhoneLinkWarningBanner(watchName: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFF332005))
+            .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "⚠️",
+            fontSize = 18.sp
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "$watchName Phone Link Active",
+                color = Color(0xFFFDE68A),
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+            Text(
+                text = "If watch hangs on 'Connecting to FP', temporarily toggle off 'Phone Connection' on your watch (Controls menu), link to PaceCast, then turn it back on.",
+                color = Color(0xFFFCD34D),
+                fontSize = 11.sp,
+                lineHeight = 15.sp
+            )
+        }
+    }
+}
+
 
 @Composable
 private fun CurrentPaceCard(

@@ -24,8 +24,15 @@ object SpeedStateManager {
     private val _connectedDeviceCount = MutableStateFlow(0)
     val connectedDeviceCount: StateFlow<Int> = _connectedDeviceCount.asStateFlow()
 
+    private val _activePhoneLinkWatchName = MutableStateFlow<String?>(null)
+    val activePhoneLinkWatchName: StateFlow<String?> = _activePhoneLinkWatchName.asStateFlow()
+
     fun updateConnectedDeviceCount(count: Int) {
         _connectedDeviceCount.value = count
+    }
+
+    fun updateActivePhoneLinkWatchName(name: String?) {
+        _activePhoneLinkWatchName.value = name
     }
 
     fun init(context: Context) {
