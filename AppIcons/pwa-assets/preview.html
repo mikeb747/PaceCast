@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PWA assets - real use preview</title>
+<!-- This page uses the generated favicon itself, so check the real browser tab too.
+     The number changes with every download, so the browser does not show a cached favicon. -->
+<link rel="icon" href="favicon.ico?v=1794184756947" sizes="48x48">
+<style>
+  :root {
+    --page: #f3f4f6; --card: #ffffff; --text: #111827; --muted: #6b7280; --line: #e5e7eb;
+    --check-a: #ffffff; --check-b: #e5e7eb;
+  }
+  :root[data-theme="dark"] {
+    --page: #0b0f17; --card: #151b26; --text: #f3f4f6; --muted: #9ca3af; --line: #263041;
+    --check-a: #1f2937; --check-b: #111827;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); font: 15px/1.5 system-ui, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+    padding: 12px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  button { font: inherit; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--page); color: var(--text); cursor: pointer; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 24px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .disclaimer { margin: 0; padding: 12px 16px; border-radius: 12px; border: 1px solid #f59e0b; background: #f59e0b1f; font-size: 13px; }
+  section > h2 { margin: 0 0 2px; font-size: 17px; }
+  section > p.note { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+  code { background: var(--page); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+  figure { margin: 0; }
+  figcaption { margin-top: 8px; color: var(--muted); font-size: 12px; text-align: center; }
+  img.missing { outline: 2px dashed #ef4444; min-width: 16px; min-height: 16px; }
+
+  /* Browser tab */
+  .browser { width: 440px; max-width: 100%; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+  .tabs { display: flex; align-items: flex-end; gap: 2px; padding: 8px 8px 0; }
+  .tab { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 8px 8px 0 0; font-size: 12px; white-space: nowrap; overflow: hidden; max-width: 190px; }
+  .tab img { width: 16px; height: 16px; flex: none; }
+  .tab span { overflow: hidden; text-overflow: ellipsis; }
+  /* Stand-in favicon of some other site */
+  .tab .other { width: 16px; height: 16px; flex: none; border-radius: 50%; background: #9aa0a6; }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 12px; }
+  .url { flex: 1; padding: 5px 12px; border-radius: 999px; }
+  .bookmarks { display: flex; gap: 14px; padding: 5px 12px 7px; font-size: 12px; }
+  .bookmarks span { display: inline-flex; align-items: center; gap: 6px; }
+  .bookmarks img { width: 16px; height: 16px; }
+  .browser.light { background: #dee1e6; color: #202124; }
+  .browser.light .tab.on, .browser.light .bar, .browser.light .bookmarks { background: #fff; }
+  .browser.light .url { background: #f1f3f4; }
+  .browser.dark { background: #202124; color: #e8eaed; }
+  .browser.dark .tab.on, .browser.dark .bar, .browser.dark .bookmarks { background: #35363a; }
+  .browser.dark .url { background: #202124; }
+  .sizes { display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .real { display: inline-grid; place-items: center; padding: 10px; border-radius: 8px; background: var(--page); border: 1px solid var(--line); }
+  .real img { display: block; }
+
+  /* Search result */
+  .result { width: 440px; max-width: 100%; padding: 14px; border-radius: 10px; background: #fff; color: #202124; border: 1px solid var(--line); }
+  .result .site { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+  .result .fav { width: 28px; height: 28px; border-radius: 50%; background: #f1f3f4; display: grid; place-items: center; border: 1px solid #dadce0; }
+  .result .fav img { width: 18px; height: 18px; }
+  .result small { color: #4d5156; display: block; font-size: 12px; }
+  .result a { display: block; margin-top: 6px; color: #1a0dab; font-size: 19px; text-decoration: none; }
+  .result p { margin: 2px 0 0; color: #4d5156; font-size: 13px; }
+
+  /* Windows */
+  .desktop { width: 440px; max-width: 100%; height: 230px; border-radius: 10px; overflow: hidden; position: relative;
+    background: linear-gradient(135deg, #0b5cad, #1aa3c9 55%, #7ad3e0); }
+  .shortcut { position: absolute; left: 18px; top: 16px; width: 76px; text-align: center; color: #fff; font-size: 12px; text-shadow: 0 1px 3px #000a; }
+  .shortcut img { width: 48px; height: 48px; display: block; margin: 0 auto 4px; }
+  .taskbar { position: absolute; inset: auto 0 0 0; height: 44px; background: #1c2333e6; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .taskbar i { width: 36px; height: 36px; border-radius: 6px; display: grid; place-items: center; }
+  .taskbar i.app { background: #ffffff1f; box-shadow: inset 0 -3px 0 -1px #60cdff; }
+  .taskbar img { width: 24px; height: 24px; }
+  .taskbar b { width: 22px; height: 22px; border-radius: 5px; background: #ffffff33; }
+  .window { width: 440px; max-width: 100%; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #fff; color: #111; }
+  .titlebar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 13px; }
+  .titlebar img { width: 16px; height: 16px; }
+  .titlebar span { margin-left: auto; letter-spacing: 10px; }
+  .window .body { height: 150px; display: grid; place-items: center; color: #9ca3af; font-size: 13px; }
+
+  /* Install dialog */
+  .install { width: 340px; max-width: 100%; border-radius: 14px; padding: 18px; background: #fff; color: #202124; box-shadow: 0 8px 30px #0003; }
+  .install h3 { margin: 0 0 12px; font-size: 16px; }
+  .install .app { display: flex; gap: 12px; align-items: center; }
+  .install img { width: 48px; height: 48px; }
+  .install small { color: #5f6368; display: block; }
+  .install .actions { margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px; }
+  .install .actions span { padding: 7px 16px; border-radius: 999px; font-size: 13px; border: 1px solid #dadce0; color: #1a73e8; }
+  .install .actions span.go { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+
+  /* Phones */
+  .phone { width: 250px; border-radius: 34px; padding: 9px; background: #111; box-shadow: 0 6px 24px #0004; }
+  .screen { position: relative; border-radius: 26px; overflow: hidden; aspect-ratio: 9 / 19.5; }
+  .wall-android { background: linear-gradient(160deg, #3b2f63, #b8527a 60%, #f2a65a); }
+  .wall-ios { background: linear-gradient(160deg, #14315c, #3e7cb1 55%, #a8d0e6); }
+  .status { display: flex; justify-content: space-between; padding: 9px 18px 0; color: #fff; font-size: 11px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 6px; padding: 26px 12px; }
+  .app-icon { text-align: center; color: #fff; font-size: 10px; text-shadow: 0 1px 2px #0008; }
+  .app-icon i { display: block; width: 46px; height: 46px; margin: 0 auto 4px; overflow: hidden; background: #ffffff40; }
+  .app-icon img { width: 100%; height: 100%; display: block; }
+  .app-icon span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .circle i { border-radius: 50%; }
+  .squircle i { border-radius: 30%; }
+  .rounded i { border-radius: 18%; }
+  .teardrop i { border-radius: 50% 50% 14% 50%; }
+  .ios i { border-radius: 22.5%; }
+  /* A standard icon on Android: scaled down onto a white plate */
+  .legacy i { border-radius: 50%; background: #fff; display: grid; place-items: center; }
+  .legacy img { width: 66%; height: 66%; }
+  .splash-android { display: grid; place-items: center; height: 100%; }
+  .splash-android div { text-align: center; }
+  .splash-android img { width: 84px; height: 84px; display: block; margin: 0 auto 60px; }
+  .splash-android b { font-size: 15px; font-weight: 500; }
+  .screen > img.fill { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tablet { width: 420px; max-width: 100%; border-radius: 22px; padding: 10px; background: #111; box-shadow: 0 6px 24px #0004; }
+  .tablet img { width: 100%; display: block; border-radius: 12px; }
+
+  /* Mask comparison */
+  .masks { display: flex; flex-wrap: wrap; gap: 20px; }
+  .mask { width: 112px; height: 112px; overflow: hidden; position: relative; }
+  .mask img { width: 100%; height: 100%; display: block; }
+  /* Safe zone: the central 80% circle */
+  .mask.safe::after { content: ""; position: absolute; inset: 10%; border-radius: 50%; border: 2px dashed #ef4444; }
+
+  /* File grids */
+  .files { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+  .files figure > div { display: inline-block; background: repeating-conic-gradient(var(--check-b) 0 25%, var(--check-a) 0 50%) 0 0 / 16px 16px; border: 1px solid var(--line); line-height: 0; }
+  .files img { max-width: 192px; height: auto; }
+  .splashes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; align-items: end; }
+  .splashes img { max-width: 100%; max-height: 220px; border: 1px solid var(--line); border-radius: 6px; display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<header data-needs="file">
+  <div>
+    <h1>PWA assets - real use preview</h1>
+    <p>Open this file from the unzipped folder, next to <code>favicon.ico</code> and <code>icons/</code>. It is only for checking; do not upload it to your site.</p>
+  </div>
+  <button id="theme" type="button">Dark page</button>
+</header>
+
+<main>
+  <p class="disclaimer"><b>Illustrative previews.</b> These mock-ups show roughly where each file is used. The real result varies: Android icon shapes, install prompts and launch screens differ by device, operating system version, browser and manifest settings. Test on real devices before you ship.</p>
+
+  <section>
+    <h2>Browser tab and bookmarks</h2>
+    <p class="note">Uses <code>favicon.ico</code> at 16px. <span data-needs="file">The real tab of this page shows it too. </span>Below, each favicon size is shown at its real size.</p>
+    <div class="row">
+      <div class="browser light">
+        <div class="tabs">
+          <div class="tab on"><img data-favicon="16" alt=""><span data-text="name"></span></div>
+          <div class="tab"><i class="other"></i><span>Another tab</span></div>
+        </div>
+        <div class="bar"><span>&larr; &rarr; &#8635;</span><div class="url">pwa-icon-generator.com</div></div>
+        <div class="bookmarks"><span><img data-favicon="16" alt=""><span data-text="shortName"></span></span><span><img data-icon="32" alt="">32px PNG</span></div>
+      </div>
+      <div class="browser dark">
+        <div class="tabs">
+          <div class="tab on"><img data-favicon="16" alt=""><span data-text="name"></span></div>
+          <div class="tab"><i class="other"></i><span>Another tab</span></div>
+        </div>
+        <div class="bar"><span>&larr; &rarr; &#8635;</span><div class="url">pwa-icon-generator.com</div></div>
+        <div class="bookmarks"><span><img data-favicon="16" alt=""><span data-text="shortName"></span></span><span><img data-icon="32" alt="">32px PNG</span></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:20px">
+      <figure>
+        <div class="sizes">
+          <span class="real"><img width="16" height="16" data-icon="16" alt=""></span>
+          <span class="real"><img width="32" height="32" data-icon="32" alt=""></span>
+          <span class="real"><img width="48" height="48" data-icon="48" alt=""></span>
+        </div>
+        <figcaption>PNG icons at 16, 32 and 48px</figcaption>
+      </figure>
+      <figure data-needs="file">
+        <div class="sizes">
+          <span class="real"><img width="16" height="16" data-favicon="16" alt=""></span>
+          <span class="real"><img width="32" height="32" data-favicon="32" alt=""></span>
+          <span class="real"><img width="48" height="48" data-favicon="48" alt=""></span>
+        </div>
+        <figcaption>favicon.ico at 16, 32 and 48px</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Search result</h2>
+    <p class="note">Google shows the favicon in a small circle next to the site name.</p>
+    <div class="result">
+      <div class="site"><div class="fav"><img data-icon="48" alt=""></div><div><span data-text="name"></span><small>https://pwa-icon-generator.com/</small></div></div>
+      <a href="#" onclick="return false" data-text="name"></a>
+      <p data-text="description"></p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Desktop: shortcut, taskbar, app window, install prompt</h2>
+    <p class="note">Windows takes the shortcut and taskbar icon from the standard icons. The installed app's title bar uses <code>theme_color</code>.</p>
+    <div class="row">
+      <div class="desktop">
+        <div class="shortcut"><img data-icon="48" alt=""><span data-text="name"></span></div>
+        <div class="taskbar"><b></b><b></b><i class="app"><img data-icon="32" alt=""></i><b></b></div>
+      </div>
+      <div class="window">
+        <div class="titlebar" data-bg="themeColor"><img data-icon="32" alt=""><b data-text="name"></b><span>&#8211;&#9633;&#10005;</span></div>
+        <div class="body">Your app</div>
+      </div>
+      <div class="install">
+        <h3>Install app?</h3>
+        <div class="app"><img data-icon="192" alt=""><div><b data-text="name"></b><small>pwa-icon-generator.com</small></div></div>
+        <div class="actions"><span>Cancel</span><span class="go">Install</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Android home screen and launch screen</h2>
+    <p class="note"><span data-needs="maskable">Android crops the maskable icon to whatever shape the phone uses. The last icon shows what happens when only a standard icon exists. </span><span data-needs="no-maskable">No maskable icons were generated, so Android shrinks the standard icon onto a white plate. </span>The launch screen is built by Android from <code>background_color</code>, the 512px icon and the app name.</p>
+    <div class="row">
+      <figure>
+        <div class="phone"><div class="screen wall-android">
+          <div class="status"><span>12:30</span><span>5G &#9646;</span></div>
+          <div class="grid">
+            <div class="app-icon circle" data-needs="maskable"><i><img data-icon="192-maskable" alt=""></i><span data-text="shortName"></span></div>
+            <div class="app-icon squircle" data-needs="maskable"><i><img data-icon="192-maskable" alt=""></i><span data-text="shortName"></span></div>
+            <div class="app-icon rounded" data-needs="maskable"><i><img data-icon="192-maskable" alt=""></i><span data-text="shortName"></span></div>
+            <div class="app-icon teardrop" data-needs="maskable"><i><img data-icon="192-maskable" alt=""></i><span data-text="shortName"></span></div>
+            <div class="app-icon legacy"><i><img data-icon="192" alt=""></i><span data-needs="maskable">No maskable</span><span data-needs="no-maskable" data-text="shortName"></span></div>
+            <div class="app-icon circle"><i></i><span>Other</span></div>
+            <div class="app-icon circle"><i></i><span>Other</span></div>
+            <div class="app-icon circle"><i></i><span>Other</span></div>
+          </div>
+        </div></div>
+        <figcaption><span data-needs="maskable">Circle, squircle, rounded, teardrop</span><span data-needs="no-maskable">Home screen</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><div class="screen" data-bg="backgroundColor">
+          <div class="splash-android"><div><img data-icon="512" alt=""><b data-text="name"></b></div></div>
+        </div></div>
+        <figcaption>Android launch screen</figcaption>
+      </figure>
+      <div data-needs="maskable">
+        <div class="masks">
+          <figure><div class="mask safe"><img data-icon="512-maskable" alt=""></div><figcaption>Full file + safe zone</figcaption></figure>
+          <figure><div class="mask" style="border-radius:50%"><img data-icon="512-maskable" alt=""></div><figcaption>Circle</figcaption></figure>
+          <figure><div class="mask" style="border-radius:30%"><img data-icon="512-maskable" alt=""></div><figcaption>Squircle</figcaption></figure>
+          <figure><div class="mask" style="border-radius:18%"><img data-icon="512-maskable" alt=""></div><figcaption>Rounded</figcaption></figure>
+        </div>
+        <p class="note" style="margin-top:12px;max-width:520px">Everything important must sit inside the red dashed circle. Empty space between the artwork and that circle means the icon will look small on the phone.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>iPhone and iPad</h2>
+    <p class="note">iOS uses the 180px icon and rounds the corners itself.<span data-needs="splash"> The launch screens are the files in <code>splash/</code>, shown here for an iPhone 16 and an iPad Pro 13" in landscape.</span></p>
+    <div class="row">
+      <figure>
+        <div class="phone"><div class="screen wall-ios">
+          <div class="status"><span>9:41</span><span>&#9646;</span></div>
+          <div class="grid">
+            <div class="app-icon ios"><i><img data-icon="180" alt=""></i><span data-text="shortName"></span></div>
+            <div class="app-icon ios"><i></i><span>Other</span></div>
+            <div class="app-icon ios"><i></i><span>Other</span></div>
+            <div class="app-icon ios"><i></i><span>Other</span></div>
+          </div>
+        </div></div>
+        <figcaption>Home screen</figcaption>
+      </figure>
+      <figure data-needs="splash">
+        <div class="phone"><div class="screen" style="aspect-ratio:1179/2556"><img class="fill" loading="lazy" data-splash="1179x2556" alt=""></div></div>
+        <figcaption>splash-1179x2556.png</figcaption>
+      </figure>
+      <figure data-needs="splash">
+        <div class="tablet"><img loading="lazy" data-splash="2732x2048" alt=""></div>
+        <figcaption>splash-2732x2048.png</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Every icon file</h2>
+    <p class="note">Shown at real size, up to 192px. The checkerboard marks transparent areas.</p>
+    <div class="files" id="icons"></div>
+  </section>
+
+  <section data-needs="splash">
+    <h2>Every splash screen</h2>
+    <p class="note">Click one to open it at full size.</p>
+    <div class="splashes" id="splashes"></div>
+  </section>
+</main>
+
+<script>
+  // Filled in by the generator from the options used for this download
+  const PREVIEW = {
+  "name": "My PWA App",
+  "shortName": "App",
+  "description": "A Progressive Web App",
+  "themeColor": "#3b82f6",
+  "backgroundColor": "#ffffff",
+  "embedded": false,
+  "favicon": "favicon.ico",
+  "icons": [
+    {
+      "key": "16",
+      "path": "icons/icon-16x16.png",
+      "label": "16x16"
+    },
+    {
+      "key": "32",
+      "path": "icons/icon-32x32.png",
+      "label": "32x32"
+    },
+    {
+      "key": "48",
+      "path": "icons/icon-48x48.png",
+      "label": "48x48"
+    },
+    {
+      "key": "64",
+      "path": "icons/icon-64x64.png",
+      "label": "64x64"
+    },
+    {
+      "key": "96",
+      "path": "icons/icon-96x96.png",
+      "label": "96x96"
+    },
+    {
+      "key": "128",
+      "path": "icons/icon-128x128.png",
+      "label": "128x128"
+    },
+    {
+      "key": "144",
+      "path": "icons/icon-144x144.png",
+      "label": "144x144"
+    },
+    {
+      "key": "152",
+      "path": "icons/icon-152x152.png",
+      "label": "152x152"
+    },
+    {
+      "key": "180",
+      "path": "icons/icon-180x180.png",
+      "label": "180x180"
+    },
+    {
+      "key": "192",
+      "path": "icons/icon-192x192.png",
+      "label": "192x192"
+    },
+    {
+      "key": "384",
+      "path": "icons/icon-384x384.png",
+      "label": "384x384"
+    },
+    {
+      "key": "512",
+      "path": "icons/icon-512x512.png",
+      "label": "512x512"
+    },
+    {
+      "key": "192-maskable",
+      "path": "icons/icon-192x192-maskable.png",
+      "label": "192x192-maskable"
+    },
+    {
+      "key": "512-maskable",
+      "path": "icons/icon-512x512-maskable.png",
+      "label": "512x512-maskable"
+    }
+  ],
+  "splashScreens": []
+};
+
+  // Black or white, whichever reads better on the colour
+  function contrast(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const light = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 150;
+    return light ? '#111827' : '#ffffff';
+  }
+
+  function figure(file, link) {
+    const el = document.createElement('figure');
+    const box = document.createElement('div');
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.alt = '';
+    img.dataset.src = file.path;
+    if (link) {
+      const a = document.createElement('a');
+      a.href = file.path;
+      a.target = '_blank';
+      a.append(img);
+      box.append(a);
+    } else {
+      box.append(img);
+    }
+    const caption = document.createElement('figcaption');
+    caption.textContent = file.label;
+    el.append(box, caption);
+    return el;
+  }
+
+  // Sections that only apply to some downloads
+  const has = {
+    maskable: PREVIEW.icons.some((icon) => icon.key.endsWith('-maskable')),
+    splash: PREVIEW.splashScreens.length > 0,
+  };
+  has['no-maskable'] = !has.maskable;
+  // Only the copy in the ZIP sits next to real files; the generator also shows this page while you work
+  has.file = !PREVIEW.embedded;
+  if (PREVIEW.theme === 'dark') document.documentElement.dataset.theme = 'dark';
+  document.querySelectorAll('[data-needs]').forEach((el) => { if (!has[el.dataset.needs]) el.remove(); });
+
+  document.getElementById('icons').append(...PREVIEW.icons.map((icon) => figure(icon)));
+  document.getElementById('splashes')?.append(...PREVIEW.splashScreens.map((splash) => figure(splash, true)));
+
+  document.querySelectorAll('img[data-icon]').forEach((img) => {
+    img.dataset.src = PREVIEW.icons.find((icon) => icon.key === img.dataset.icon)?.path ?? '';
+  });
+  // In the ZIP the favicon is favicon.ico; before the download, the PNG of the same size
+  document.querySelectorAll('img[data-favicon]').forEach((img) => {
+    img.dataset.src = PREVIEW.favicon ?? PREVIEW.icons.find((icon) => icon.key === img.dataset.favicon)?.path ?? '';
+  });
+  document.querySelectorAll('img[data-splash]').forEach((img) => {
+    img.dataset.src = PREVIEW.splashScreens.find((splash) => splash.label === img.dataset.splash)?.path ?? '';
+  });
+  document.querySelectorAll('[data-text]').forEach((el) => { el.textContent = PREVIEW[el.dataset.text]; });
+  document.querySelectorAll('[data-bg]').forEach((el) => {
+    el.style.background = PREVIEW[el.dataset.bg];
+    el.style.color = contrast(PREVIEW[el.dataset.bg]);
+  });
+  document.querySelectorAll('img[data-src]').forEach((img) => {
+    img.onerror = () => { img.classList.add('missing'); img.title = 'Missing: ' + img.dataset.src; };
+    img.src = img.dataset.src;
+  });
+
+  const button = document.getElementById('theme');
+  if (button) button.onclick = () => {
+    const dark = document.documentElement.dataset.theme !== 'dark';
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    button.textContent = dark ? 'Light page' : 'Dark page';
+  };
+</script>
+</body>
+</html>
