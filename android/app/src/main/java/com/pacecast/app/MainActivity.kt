@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -27,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -222,6 +224,7 @@ fun PaceCastSplashScreen(scale: Float, alpha: Float) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(Color(0xFFEAFECD))
             .graphicsLayer { this.alpha = alpha },
         contentAlignment = Alignment.Center
     ) {
@@ -234,7 +237,7 @@ fun PaceCastSplashScreen(scale: Float, alpha: Float) {
                     scaleX = scale
                     scaleY = scale
                 },
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Fit
         )
     }
 }
