@@ -3,7 +3,7 @@ export const MAX_SPEED_KMH = 30.0;
 export const MAX_PRESET_SPEED_KMH = 24.0;
 export const DEFAULT_SPEED_KMH = 16.8;
 export const DEFAULT_PREVIOUS_SPEED_KMH = 6.0;
-export const DEFAULT_SPEED_PRESETS = [5.0, 8.0, 10.0, 12.0, 15.0, 16.8];
+export const DEFAULT_SPEED_PRESETS = [6.0, 11.0, 11.5, 12.0, 16.0, 17.0];
 
 export type UnitSystem = 'metric' | 'imperial';
 

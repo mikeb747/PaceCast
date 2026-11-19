@@ -7,7 +7,12 @@ import {
   formatPaceMile,
   encodeRscPacket,
   PaceTransitionManager,
+  DEFAULT_SPEED_PRESETS,
 } from './pacecast-logic';
+
+test('DEFAULT_SPEED_PRESETS matches [6, 11, 11.5, 12, 16, 17]', () => {
+  assert.deepStrictEqual(DEFAULT_SPEED_PRESETS, [6.0, 11.0, 11.5, 12.0, 16.0, 17.0]);
+});
 
 test('clampSpeed respects min and max limits and 1 decimal place precision', () => {
   assert.strictEqual(clampSpeed(16.84), 16.8);

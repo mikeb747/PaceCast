@@ -61,6 +61,24 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   const [wakeLockActive, setWakeLockActive] = useState<boolean>(false);
   const wakeLockRef = useRef<any>(null);
 
+  // Live clock displayed to the right of PaceCast
+  const [currentTime, setCurrentTime] = useState<string>(() => {
+    const now = new Date();
+    return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  });
+
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      setCurrentTime(
+        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+      );
+    };
+    updateClock();
+    const id = window.setInterval(updateClock, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // Unit System state ('metric' km/h & /km <-> 'imperial' mph & /mi)
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => {
     const saved = localStorage.getItem('pacecast-unit-system');
@@ -82,7 +100,12 @@ export const PaceController: React.FC<PaceControllerProps> = ({
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length === 6) {
-          return parsed.map((p) => clampPresetSpeed(Number(p)));
+          const normalized = parsed.map((p) => clampPresetSpeed(Number(p)));
+          const isOldDefault =
+            JSON.stringify(normalized) === JSON.stringify([5, 8, 10, 12, 15, 16.8]);
+          if (!isOldDefault) {
+            return normalized;
+          }
         }
       } catch {
         // fallback
@@ -345,14 +368,20 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   return (
     <div className="w-full max-w-xl mx-auto h-full flex flex-col justify-between overflow-hidden gap-1.5 sm:gap-2">
       {/* Top Header */}
-      <header className="shrink-0 flex items-center justify-between pb-0.5 px-0.5">
-        <div>
-          <h1 className="text-[28px] font-black tracking-tight text-white leading-tight">
+      <header className="shrink-0 flex items-center justify-between gap-1 pb-0.5 px-0.5">
+        <div className="flex items-baseline gap-1.5 sm:gap-2.5 min-w-0">
+          <h1 className="text-[24px] sm:text-[28px] font-black tracking-tight text-white leading-tight truncate">
             PaceCast
           </h1>
+          <span
+            className="text-base sm:text-xl font-bold font-mono text-neutral-300 tracking-tight shrink-0"
+            aria-label={`Current time ${currentTime}`}
+          >
+            {currentTime}
+          </span>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           <button
             onClick={toggleWakeLock}
             className={`p-1.5 rounded-xl border transition ${
@@ -363,7 +392,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             title={wakeLockActive ? 'Screen Awake: ON' : 'Keep Screen Awake on Treadmill'}
             aria-label="Toggle screen wake lock"
           >
-            <Sun className="w-4 h-4" />
+            <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
           <button
@@ -372,7 +401,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             title="Inspect live BLE 0x1814 RSC GATT telemetry"
             aria-label="Inspect BLE telemetry"
           >
-            <Radio className="w-4 h-4" />
+            <Radio className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
           <button
@@ -381,13 +410,13 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             title="View Kotlin & Compose Android source code"
             aria-label="View Android source code"
           >
-            <Code2 className="w-4 h-4" />
+            <Code2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
           {/* Interactive Status Pill */}
           <button
             onClick={onToggleBroadcasting}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition select-none cursor-pointer ${
+            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border transition select-none cursor-pointer ${
               isBroadcasting
                 ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.2)]'
                 : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-white'
@@ -395,11 +424,11 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             title="Click to toggle BLE Advertising"
           >
             <span
-              className={`w-2 h-2 rounded-full ${
+              className={`w-2 h-2 rounded-full shrink-0 ${
                 isBroadcasting ? 'bg-[#4ade80] animate-pulse-dot' : 'bg-neutral-500'
               }`}
             />
-            <span className="text-[13px] font-bold tracking-wide">
+            <span className="text-xs sm:text-[13px] font-bold tracking-wide">
               {isBroadcasting ? 'Broadcasting' : 'Standby'}
             </span>
           </button>
@@ -495,12 +524,24 @@ export const PaceController: React.FC<PaceControllerProps> = ({
 
       {/* Quick Speed Presets Bar (shrink-0, 52px buttons) */}
       <section className="shrink-0 space-y-1" aria-labelledby="presets-heading">
-        <div className="flex items-center justify-between text-sm font-bold text-neutral-400 uppercase tracking-wider px-1">
-          <span id="presets-heading" className="flex items-center gap-1.5">
+        <div
+          style={{ marginBottom: '0px', marginTop: '-6px' }}
+          className="flex items-center justify-between text-sm font-bold text-neutral-400 uppercase tracking-wider px-1"
+        >
+          <span
+            id="presets-heading"
+            style={{ fontWeight: 'bold', fontSize: '14px', color: '#b6b6b6' }}
+            className="flex items-center gap-1.5"
+          >
             <Layers className="w-4 h-4 text-emerald-400" />
             Presets
           </span>
-          <span className="text-xs text-neutral-400 font-normal">Press and hold to change</span>
+          <span
+            style={{ height: '20px', fontSize: '13px', fontWeight: 'bold', color: '#b6b6b6' }}
+            className="text-xs text-neutral-400 font-normal"
+          >
+            Press and hold to change
+          </span>
         </div>
         <div className="grid grid-cols-6 gap-1.5">
           {presets.map((p, index) => {
@@ -527,54 +568,89 @@ export const PaceController: React.FC<PaceControllerProps> = ({
         </div>
       </section>
 
-      {/* Switch Card & Keypad Display Row (shrink-0, intrinsic height) */}
+      {/* Switch Card & Keypad Display Row (shrink-0, 80px tall) */}
       <div className="shrink-0 grid grid-cols-2 gap-2 sm:gap-3">
         {/* Switch Button with 'Switch' text inside next to the icon */}
         <button
           onClick={recallPrevious}
-          className="h-[56px] sm:h-[60px] flex items-center justify-between px-3 sm:px-3.5 rounded-xl bg-[#222527] border border-[#2e3235] hover:border-emerald-500/40 transition group cursor-pointer text-left"
+          style={{ height: '80px' }}
+          className="h-[80px] flex items-center justify-between px-2.5 sm:px-3.5 rounded-xl bg-[#222527] border border-[#2e3235] hover:border-emerald-500/40 transition group cursor-pointer text-left overflow-hidden"
           title="Tap to switch with Current Pace (Interval Mode)"
           aria-label={`Switch with previous pace of ${unitSystem === 'metric' ? previousSpeed.toFixed(1) + ' km/h' : kmhToMph(previousSpeed).toFixed(1) + ' mph'}`}
         >
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-3xl font-black text-white group-hover:text-emerald-400 transition leading-none">
+          <div className="flex items-baseline gap-1 font-mono min-w-0">
+            <span className="text-2xl sm:text-3xl font-black text-white group-hover:text-emerald-400 transition leading-none">
               {unitSystem === 'metric' ? previousSpeed.toFixed(1) : kmhToMph(previousSpeed).toFixed(1)}
             </span>
-            <span className="text-xs sm:text-sm font-semibold text-neutral-400">
+            <span className="text-[11px] sm:text-sm font-semibold text-neutral-400">
               {unitSystem === 'metric' ? 'km/h' : 'mph'}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs sm:text-sm font-bold text-neutral-300 uppercase tracking-wider select-none">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <span className="text-[11px] sm:text-sm font-bold text-neutral-300 uppercase tracking-wider select-none">
               Switch
             </span>
-            <div className="w-8 h-8 rounded-lg bg-[#181a1b] border border-[#2e3235] flex items-center justify-center text-emerald-400 group-hover:rotate-180 transition duration-300">
-              <RotateCcw className="w-4 h-4" />
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-[#181a1b] border border-[#2e3235] flex items-center justify-center text-emerald-400 group-hover:rotate-180 transition duration-300 shrink-0">
+              <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           </div>
         </button>
 
-        {/* Keypad Display Box (Typed text removed, styled per focus mode #545454) */}
+        {/* Keypad Display Box (light blue #a3d6d6 with black font when typing before Enter is pressed; #545454 otherwise) */}
         <div
-          style={{ backgroundColor: '#545454' }}
-          className="h-[56px] sm:h-[60px] flex items-center justify-between px-3 sm:px-3.5 rounded-xl border border-[#2e3235] text-right font-mono shadow-inner"
+          style={{
+            backgroundColor: keypadValue !== '' ? '#a3d6d6' : '#545454',
+            fontWeight: 'bold',
+            fontSize: '18px',
+            color: keypadValue !== '' ? '#000000' : '#d4d4d4',
+            height: '80px',
+          }}
+          className="h-[80px] flex items-center justify-between px-3 sm:px-3.5 rounded-xl border border-[#2e3235] text-right font-mono shadow-inner transition-colors"
         >
-          <span className="text-xs font-bold text-neutral-300 uppercase tracking-wider font-sans">
+          <span
+            className={`text-xs font-bold uppercase tracking-wider font-sans ${
+              keypadValue !== '' ? 'text-black' : 'text-neutral-300'
+            }`}
+          >
             Buffer
           </span>
           <div className="flex items-baseline gap-1">
-            <span className={`text-2xl font-bold ${keypadValue ? 'text-[#4ade80]' : 'text-neutral-300'}`}>
+            <span
+              className={`text-2xl font-bold ${
+                keypadValue !== '' ? 'text-black' : 'text-neutral-300'
+              }`}
+            >
               {keypadValue || '—'}
             </span>
-            <span className="text-xs sm:text-sm text-neutral-300">
+            <span
+              className={`text-xs sm:text-sm font-bold ${
+                keypadValue !== '' ? 'text-black' : 'text-neutral-300'
+              }`}
+            >
               {unitSystem === 'metric' ? 'km/h' : 'mph'}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Exact Pace Numpad */}
+      {/* Exact Pace Numpad (Enter Pace positioned above numbers 1, 2 & 3) */}
       <section className="flex-1 min-h-0 flex flex-col gap-1.5 sm:gap-2 pb-0.5" aria-label="Exact pace numpad">
+        <div className="flex-1 min-h-0 flex">
+          <button
+            onClick={applyKeypad}
+            disabled={keypadValue === ''}
+            className={`w-full h-full rounded-xl font-bold flex items-center justify-center gap-2 text-base sm:text-lg uppercase tracking-wider transition cursor-pointer border ${
+              keypadValue !== ''
+                ? 'bg-[#4ade80] text-[#052e16] border-[#16a34a] border-b-4 hover:brightness-105 active:translate-y-1 active:border-b-0'
+                : 'bg-[#222527] text-neutral-500 border-[#2e3235] cursor-not-allowed opacity-60'
+            }`}
+            aria-label="Enter typed pace"
+          >
+            <span>Enter pace</span>
+            <CornerDownLeft className="w-5 h-5" />
+          </button>
+        </div>
+
         <div className="flex-[4] min-h-0 grid grid-cols-3 grid-rows-4 gap-1.5 sm:gap-2">
           {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0'].map((digit) => (
             <button
@@ -593,22 +669,6 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             aria-label="Delete last digit"
           >
             <Delete className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="flex-1 min-h-0 flex">
-          <button
-            onClick={applyKeypad}
-            disabled={keypadValue === ''}
-            className={`w-full h-full rounded-xl font-bold flex items-center justify-center gap-2 text-base sm:text-lg uppercase tracking-wider transition cursor-pointer border ${
-              keypadValue !== ''
-                ? 'bg-[#4ade80] text-[#052e16] border-[#16a34a] border-b-4 hover:brightness-105 active:translate-y-1 active:border-b-0'
-                : 'bg-[#222527] text-neutral-500 border-[#2e3235] cursor-not-allowed opacity-60'
-            }`}
-            aria-label="Enter typed pace"
-          >
-            <span>Enter pace</span>
-            <CornerDownLeft className="w-5 h-5" />
           </button>
         </div>
       </section>
