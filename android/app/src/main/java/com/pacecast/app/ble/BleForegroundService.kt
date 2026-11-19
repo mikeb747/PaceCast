@@ -256,11 +256,19 @@ class BleForegroundService : Service() {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        stopForegroundService()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         releaseWakeLock()
         observeJob?.cancel()
         serviceScope.cancel()
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (_: Exception) {}
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

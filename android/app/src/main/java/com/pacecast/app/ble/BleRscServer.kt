@@ -35,6 +35,7 @@ class BleRscServer(private val context: Context) {
     private var rscMeasurementChar: BluetoothGattCharacteristic? = null
 
     private val registeredDevices = Collections.synchronizedSet(HashSet<BluetoothDevice>())
+    private val connectedDevices = Collections.synchronizedSet(HashSet<BluetoothDevice>())
 
     private val _isAdvertising = MutableStateFlow(false)
     val isAdvertising: StateFlow<Boolean> = _isAdvertising.asStateFlow()
@@ -74,8 +75,10 @@ class BleRscServer(private val context: Context) {
             super.onConnectionStateChange(device, status, newState)
             Log.d(TAG, "Device ${device.address} connection state changed: status=$status, newState=$newState")
             if (newState == BluetoothProfile.STATE_CONNECTED) {
+                connectedDevices.add(device)
                 Log.d(TAG, "GATT Client connected: ${device.address}")
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                connectedDevices.remove(device)
                 synchronized(registeredDevices) {
                     registeredDevices.remove(device)
                     _subscribedDeviceCount.value = registeredDevices.size
@@ -151,6 +154,7 @@ class BleRscServer(private val context: Context) {
             Log.d(TAG, "Write request for descriptor: ${descriptor.uuid}, value=${value.joinToString { "%02X".format(it) }}")
             if (descriptor.uuid == CCCD_DESCRIPTOR_UUID) {
                 if (Arrays.equals(value, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) {
+                    connectedDevices.add(device)
                     synchronized(registeredDevices) {
                         registeredDevices.add(device)
                         _subscribedDeviceCount.value = registeredDevices.size
@@ -200,7 +204,7 @@ class BleRscServer(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    fun stopAdvertising() {
+    fun stopAdvertising(immediateClose: Boolean = false) {
         broadcastJob?.cancel()
         broadcastJob = null
 
@@ -208,26 +212,65 @@ class BleRscServer(private val context: Context) {
             bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
         } catch (_: Exception) {}
 
-        // Explicitly cancel connection and send disconnect signal to each connected device
         val server = gattServer
+        val char = rscMeasurementChar
+        gattServer = null
+        rscMeasurementChar = null
+
         if (server != null) {
-            synchronized(registeredDevices) {
-                for (device in registeredDevices) {
+            val allDevices = HashSet<BluetoothDevice>()
+            synchronized(registeredDevices) { allDevices.addAll(registeredDevices) }
+            synchronized(connectedDevices) { allDevices.addAll(connectedDevices) }
+            try {
+                bluetoothManager?.getConnectedDevices(BluetoothProfile.GATT)?.let { allDevices.addAll(it) }
+            } catch (_: Exception) {}
+
+            // 1. Transmit an immediate 0.0 m/s frame so watch drops speed immediately
+            if (char != null) {
+                val zeroPayload = byteArrayOf(0x00, 0x00, 0x00, 0x00)
+                char.value = zeroPayload
+                for (device in allDevices) {
                     try {
-                        server.cancelConnection(device)
-                        Log.d(TAG, "Sent cancelConnection disconnect to device: ${device.address}")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to cancel connection for ${device.address}", e)
-                    }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            server.notifyCharacteristicChanged(device, char, false, zeroPayload)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            server.notifyCharacteristicChanged(device, char, false)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+
+            // 2. Remove services and issue active BLE link-layer disconnect (cancelConnection)
+            try {
+                server.clearServices()
+            } catch (_: Exception) {}
+
+            for (device in allDevices) {
+                try {
+                    server.cancelConnection(device)
+                    Log.d(TAG, "Sent cancelConnection disconnect to device: ${device.address}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to cancel connection for ${device.address}", e)
+                }
+            }
+
+            // 3. Allow Bluetooth controller ~200ms to transmit LL_TERMINATE_IND over the air before destroying GATT server handle
+            if (immediateClose) {
+                try {
+                    server.close()
+                } catch (_: Exception) {}
+            } else {
+                scope.launch {
+                    delay(200L)
+                    try {
+                        server.close()
+                    } catch (_: Exception) {}
                 }
             }
         }
 
-        try {
-            gattServer?.close()
-            gattServer = null
-        } catch (_: Exception) {}
-
+        connectedDevices.clear()
         synchronized(registeredDevices) {
             registeredDevices.clear()
             _subscribedDeviceCount.value = 0
@@ -235,6 +278,11 @@ class BleRscServer(private val context: Context) {
         }
 
         _isAdvertising.value = false
+    }
+
+    fun shutdown() {
+        stopAdvertising(immediateClose = true)
+        scope.cancel()
     }
 
     @SuppressLint("MissingPermission")
@@ -284,9 +332,10 @@ class BleRscServer(private val context: Context) {
         val server = gattServer ?: return
         val char = rscMeasurementChar ?: return
 
-        val speedKmh = currentSpeedKmh.coerceIn(0f, 30f)
-        val speedMs = speedKmh / 3.6f
-        val rawSpeed = (speedMs * 256f).roundToInt().coerceIn(0, 65535)
+        // Use 64-bit Double math normalized to 0.1 km/h to eliminate 32-bit Float representation drift
+        val exactSpeedKmh = ((currentSpeedKmh.toDouble() * 10.0).roundToInt() / 10.0).coerceIn(0.0, 30.0)
+        // Direct conversion to 1/256 m/s BLE RSC uint16 units for maximum possible accuracy
+        val rawSpeed = ((exactSpeedKmh * 256.0) / 3.6).roundToInt().coerceIn(0, 65535)
 
         val payload = ByteArray(4)
         payload[0] = 0x00.toByte()

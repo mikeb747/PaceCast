@@ -22,6 +22,8 @@ export interface RscPacket {
   speedKmh: number;
   speedMs: number;
   rawLittleEndianSpeed: number;
+  decodedSpeedMs: number;
+  decodedSpeedKmh: number;
   hexPayload: string;
   bytes: number[];
   cadenceRpm: number;
@@ -57,8 +59,12 @@ export function formatPaceMile(speedKmh: number): string {
 
 export function encodeRscPacket(speedKmh: number, cadenceRpm: number = 0): RscPacket {
   const clampedSpeed = clampSpeed(speedKmh);
+  // Full 64-bit IEEE-754 floating point m/s (no intermediate rounding)
   const speedMs = clampedSpeed / 3.6;
-  const rawLittleEndianSpeed = Math.min(Math.round(speedMs * 256), 65535);
+  // Direct 1/256 m/s BLE RSC uint16 integer calculation for maximum accuracy
+  const rawLittleEndianSpeed = Math.min(Math.max(Math.round((clampedSpeed * 256) / 3.6), 0), 65535);
+  const decodedSpeedMs = rawLittleEndianSpeed / 256;
+  const decodedSpeedKmh = decodedSpeedMs * 3.6;
 
   const byte0 = 0x00; // Flags: No stride length, no total distance
   const byte1 = rawLittleEndianSpeed & 0xff;
@@ -74,6 +80,8 @@ export function encodeRscPacket(speedKmh: number, cadenceRpm: number = 0): RscPa
     speedKmh: clampedSpeed,
     speedMs,
     rawLittleEndianSpeed,
+    decodedSpeedMs,
+    decodedSpeedKmh,
     hexPayload,
     bytes,
     cadenceRpm,

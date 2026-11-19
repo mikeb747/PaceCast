@@ -184,6 +184,7 @@ class MainActivity : ComponentActivity() {
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             enableBluetoothLauncher.launch(enableBtIntent)
         } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             bleServer.startAdvertising()
             BleForegroundService.startService(this)
             Toast.makeText(this, "Broadcasting started (PaceCast)", Toast.LENGTH_SHORT).show()
@@ -194,6 +195,7 @@ class MainActivity : ComponentActivity() {
         if (bleServer.isAdvertising.value) {
             bleServer.stopAdvertising()
             BleForegroundService.stopService(this)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             Toast.makeText(this, "BLE Advertising Stopped", Toast.LENGTH_SHORT).show()
             return
         }
@@ -201,11 +203,21 @@ class MainActivity : ComponentActivity() {
         startAdvertisingWithPermissions()
     }
 
+    override fun onStop() {
+        super.onStop()
+        // If we stopped broadcasting and the app is closed/backgrounded, do not keep any service or wake lock alive
+        if (!bleServer.isAdvertising.value) {
+            BleForegroundService.stopService(this)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         watchDetector.stop()
-        bleServer.stopAdvertising()
+        bleServer.shutdown()
         BleForegroundService.stopService(this)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 }
 
@@ -221,11 +233,11 @@ fun PaceCastAppContent(
     LaunchedEffect(Unit) {
         splashScale.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 700)
+            animationSpec = tween(durationMillis = 350)
         )
         splashAlpha.animateTo(
             targetValue = 0f,
-            animationSpec = tween(durationMillis = 1000)
+            animationSpec = tween(durationMillis = 500)
         )
         showSplash = false
     }
@@ -247,11 +259,14 @@ fun PaceCastAppContent(
 
 @Composable
 fun PaceCastSplashScreen(scale: Float, alpha: Float) {
+    val splashGreen = Color(0xFFEAFECD)
+    // Fade background color from green (#EAFECD) to black (#000000) as alpha animates from 1f -> 0f
+    val bgColor = androidx.compose.ui.graphics.lerp(Color.Black, splashGreen, alpha)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFEAFECD))
-            .graphicsLayer { this.alpha = alpha },
+            .background(bgColor.copy(alpha = alpha)),
         contentAlignment = Alignment.Center
     ) {
         Image(
@@ -262,6 +277,7 @@ fun PaceCastSplashScreen(scale: Float, alpha: Float) {
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
+                    this.alpha = alpha
                 },
             contentScale = ContentScale.Fit
         )

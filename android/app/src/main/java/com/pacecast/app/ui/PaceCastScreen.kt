@@ -1,6 +1,10 @@
 package com.pacecast.app.ui
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -520,8 +524,42 @@ private fun HeaderSection(
     deviceCount: Int,
     onToggle: () -> Unit
 ) {
+    val context = LocalContext.current
     var currentTime by remember {
         mutableStateOf(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()))
+    }
+
+    var batteryLevel by remember {
+        mutableStateOf(
+            run {
+                val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+                val pct = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 55
+                if (pct in 1..100) pct else 55
+            }
+        )
+    }
+
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent != null) {
+                    val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                    val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                    if (level >= 0 && scale > 0) {
+                        val pct = ((level * 100f) / scale).roundToInt()
+                        if (pct in 1..100) {
+                            batteryLevel = pct
+                        }
+                    }
+                }
+            }
+        }
+        context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        onDispose {
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (_: Exception) {}
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -534,7 +572,7 @@ private fun HeaderSection(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 2.dp),
+            .padding(horizontal = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -579,31 +617,44 @@ private fun HeaderSection(
         }
 
         Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(if (isAdvertising) statusColor.copy(alpha = 0.12f) else CharcoalSurface)
-                .border(
-                    width = 1.dp,
-                    color = if (isAdvertising) statusColor.copy(alpha = 0.5f) else CharcoalBorder,
-                    shape = RoundedCornerShape(20.dp)
-                )
-                .clickable { onToggle() }
-                .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Box(
+            Row(
                 modifier = Modifier
-                    .size(9.dp)
-                    .scale(if (isAdvertising) pulseScale else 1f)
-                    .clip(CircleShape)
-                    .background(if (isAdvertising) statusColor else TextMuted)
-            )
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (isAdvertising) statusColor.copy(alpha = 0.12f) else CharcoalSurface)
+                    .border(
+                        width = 1.dp,
+                        color = if (isAdvertising) statusColor.copy(alpha = 0.5f) else CharcoalBorder,
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                    .clickable { onToggle() }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .scale(if (isAdvertising) pulseScale else 1f)
+                        .clip(CircleShape)
+                        .background(if (isAdvertising) statusColor else TextMuted)
+                )
+                Text(
+                    text = statusText,
+                    color = statusColor,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
             Text(
-                text = statusText,
-                color = statusColor,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
+                text = "${batteryLevel}%",
+                color = Color(0xFF4ADE80),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
             )
         }
     }
@@ -990,7 +1041,7 @@ private fun PresetButton(
         Text(
             text = label,
             color = if (isSelected) CharcoalCard else TextPrimary,
-            fontSize = 15.sp,
+            fontSize = 19.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace
         )
@@ -1012,7 +1063,7 @@ private fun RecallAndDisplayRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Switch Box with 'Switch' text inside next to the icon (80.dp tall)
+        // Switch Box with 'Switch' text inside next to the icon (80.dp tall, 25% larger text)
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1021,7 +1072,7 @@ private fun RecallAndDisplayRow(
                 .background(ButtonNeutralBg)
                 .border(1.dp, CharcoalBorder, RoundedCornerShape(14.dp))
                 .clickable { onRecall() }
-                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxSize(),
@@ -1032,29 +1083,30 @@ private fun RecallAndDisplayRow(
                     Text(
                         text = String.format(Locale.US, "%.1f", displayPrevSpeed),
                         color = TextPrimary,
-                        fontSize = 23.sp,
+                        fontSize = 25.sp,
                         fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = (-0.8).sp
                     )
                     Spacer(modifier = Modifier.width(2.dp))
                     Text(
                         text = displayUnit,
                         color = TextSecondary,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 3.dp)
                     )
                 }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(
                         text = "Switch",
                         color = TextSecondary,
-                        fontSize = 12.sp,
+                        fontSize = 13.5.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.3.sp
+                        letterSpacing = 0.sp
                     )
                     Icon(
                         imageVector = Icons.Default.Refresh,
@@ -1066,7 +1118,7 @@ private fun RecallAndDisplayRow(
             }
         }
 
-        // Keypad Display (Buffer) Box (80.dp tall; light blue #A3D6D6 with black font when typing before Enter is pressed; #545454 otherwise)
+        // Keypad Display (Buffer) Box (80.dp tall, 25% larger text; light blue #A3D6D6 with black font when typing before Enter is pressed; #545454 otherwise)
         val hasBuffer = keypadBuffer.isNotEmpty()
         val bufferBgColor = if (hasBuffer) Color(0xFFA3D6D6) else Color(0xFF545454)
         val bufferTextColor = if (hasBuffer) Color.Black else TextPrimary
@@ -1082,7 +1134,7 @@ private fun RecallAndDisplayRow(
                     color = CharcoalBorder,
                     shape = RoundedCornerShape(14.dp)
                 )
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxSize(),
@@ -1092,26 +1144,27 @@ private fun RecallAndDisplayRow(
                 Text(
                     text = "BUFFER",
                     color = bufferTextColor,
-                    fontSize = 12.sp,
+                    fontSize = 13.5.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.8.sp
+                    letterSpacing = 0.2.sp
                 )
 
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         text = if (hasBuffer) keypadBuffer else "—",
                         color = bufferTextColor,
-                        fontSize = 25.sp,
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = (-0.8).sp
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = displayUnit,
                         color = bufferTextColor,
-                        fontSize = 13.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 2.dp)
+                        modifier = Modifier.padding(bottom = 3.dp)
                     )
                 }
             }
@@ -1138,7 +1191,7 @@ private fun KeypadSection(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        // Enter pace button positioned ABOVE numbers 1, 2 & 3
+        // Enter pace button positioned ABOVE numbers 1, 2 & 3 (25% larger text)
         val isEnabled = keypadBuffer.isNotEmpty()
         Button(
             onClick = { if (isEnabled) onSubmit() },
@@ -1160,14 +1213,14 @@ private fun KeypadSection(
                 Text(
                     text = "Enter pace",
                     color = if (isEnabled) CharcoalCard else TextMuted,
-                    fontSize = 18.sp,
+                    fontSize = 22.5.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowRight,
                     contentDescription = null,
                     tint = if (isEnabled) CharcoalCard else TextMuted,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
         }
@@ -1215,7 +1268,7 @@ private fun Keypad3DButton(
         Text(
             text = text,
             color = Color.White,
-            fontSize = 22.sp,
+            fontSize = 27.5.sp,
             fontWeight = FontWeight.Bold
         )
     }

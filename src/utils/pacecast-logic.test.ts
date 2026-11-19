@@ -40,6 +40,16 @@ test('encodeRscPacket produces accurate 4-byte Little-Endian BLE RSC payload for
   assert.strictEqual(packet.bytes[0], 0x00);
   assert.strictEqual(packet.bytes[3], 0x00);
   assert.strictEqual(packet.bytes.length, 4);
+
+  // 11.5 km/h = 3.194444... m/s -> * 256 = 817.777... -> 818 (3.1953125 m/s = 11.503125 km/h)
+  const p115 = encodeRscPacket(11.5);
+  assert.strictEqual(p115.rawLittleEndianSpeed, 818);
+  assert.strictEqual(p115.hexPayload, '00 32 03 00');
+
+  // 16.0 km/h = 4.444444... m/s -> * 256 = 1137.777... -> 1138 (4.4453125 m/s = 16.003125 km/h)
+  const p160 = encodeRscPacket(16.0);
+  assert.strictEqual(p160.rawLittleEndianSpeed, 1138);
+  assert.strictEqual(p160.hexPayload, '00 72 04 00');
 });
 
 test('PaceTransitionManager debounces previous pace during rapid +/- adjustments', async () => {

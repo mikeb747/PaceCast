@@ -67,6 +67,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
     return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   });
 
+  // Live battery percentage indicator in top right (#4ade80)
+  const [batteryLevel, setBatteryLevel] = useState<number>(55);
+
   useEffect(() => {
     const updateClock = () => {
       const now = new Date();
@@ -77,6 +80,33 @@ export const PaceController: React.FC<PaceControllerProps> = ({
     updateClock();
     const id = window.setInterval(updateClock, 1000);
     return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    let batteryManager: any = null;
+    const updateBattery = () => {
+      if (batteryManager && typeof batteryManager.level === 'number') {
+        const pct = Math.round(batteryManager.level * 100);
+        if (pct > 0 && pct <= 100) {
+          setBatteryLevel(pct);
+        }
+      }
+    };
+    if (typeof navigator !== 'undefined' && 'getBattery' in navigator) {
+      (navigator as any)
+        .getBattery()
+        .then((bm: any) => {
+          batteryManager = bm;
+          updateBattery();
+          bm.addEventListener('levelchange', updateBattery);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      if (batteryManager && batteryManager.removeEventListener) {
+        batteryManager.removeEventListener('levelchange', updateBattery);
+      }
+    };
   }, []);
 
   // Unit System state ('metric' km/h & /km <-> 'imperial' mph & /mi)
@@ -368,13 +398,16 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   return (
     <div className="w-full max-w-xl mx-auto h-full flex flex-col justify-between overflow-hidden gap-1.5 sm:gap-2">
       {/* Top Header */}
-      <header className="shrink-0 flex items-center justify-between gap-1 pb-0.5 px-0.5">
+      <header
+        style={{ paddingRight: '6px', paddingLeft: '6px' }}
+        className="shrink-0 flex items-center justify-between gap-1 pb-0.5 pt-0.5 px-0.5"
+      >
         <div className="flex items-baseline gap-1.5 sm:gap-2.5 min-w-0">
-          <h1 className="text-[24px] sm:text-[28px] font-black tracking-tight text-white leading-tight truncate">
+          <h1 className="text-[22px] sm:text-[28px] font-black tracking-tight text-white leading-tight truncate">
             PaceCast
           </h1>
           <span
-            className="text-base sm:text-xl font-bold font-mono text-neutral-300 tracking-tight shrink-0"
+            className="text-sm sm:text-xl font-bold font-mono text-neutral-300 tracking-tight shrink-0"
             aria-label={`Current time ${currentTime}`}
           >
             {currentTime}
@@ -384,7 +417,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           <button
             onClick={toggleWakeLock}
-            className={`p-1.5 rounded-xl border transition ${
+            className={`p-1 sm:p-1.5 rounded-xl border transition ${
               wakeLockActive
                 ? 'bg-amber-400/15 border-amber-400/40 text-amber-300'
                 : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-white'
@@ -397,7 +430,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
 
           <button
             onClick={onOpenTelemetry}
-            className="p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
+            className="p-1 sm:p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
             title="Inspect live BLE 0x1814 RSC GATT telemetry"
             aria-label="Inspect BLE telemetry"
           >
@@ -406,7 +439,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
 
           <button
             onClick={onOpenAndroidCode}
-            className="p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
+            className="p-1 sm:p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
             title="View Kotlin & Compose Android source code"
             aria-label="View Android source code"
           >
@@ -416,7 +449,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           {/* Interactive Status Pill */}
           <button
             onClick={onToggleBroadcasting}
-            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border transition select-none cursor-pointer ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border transition select-none cursor-pointer ${
               isBroadcasting
                 ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.2)]'
                 : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-white'
@@ -428,10 +461,19 @@ export const PaceController: React.FC<PaceControllerProps> = ({
                 isBroadcasting ? 'bg-[#4ade80] animate-pulse-dot' : 'bg-neutral-500'
               }`}
             />
-            <span className="text-xs sm:text-[13px] font-bold tracking-wide">
+            <span className="text-[11px] sm:text-[13px] font-bold tracking-wide">
               {isBroadcasting ? 'Broadcasting' : 'Standby'}
             </span>
           </button>
+
+          {/* Battery Percentage Indicator in #4ade80 */}
+          <span
+            style={{ color: '#4ade80' }}
+            className="text-xs sm:text-sm font-bold font-mono tracking-tight pl-0.5 shrink-0"
+            aria-label={`Battery ${batteryLevel}%`}
+          >
+            {batteryLevel}%
+          </span>
         </div>
       </header>
 
@@ -554,7 +596,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
                 onPointerCancel={handlePresetPointerCancel}
                 onPointerLeave={handlePresetPointerCancel}
                 onContextMenu={(e) => e.preventDefault()}
-                className={`h-[52px] rounded-lg font-mono text-sm sm:text-base font-bold border transition cursor-pointer flex flex-col items-center justify-center select-none active:scale-[0.98] ${
+                className={`h-[52px] rounded-lg font-mono text-[18px] sm:text-[20px] font-bold border transition cursor-pointer flex flex-col items-center justify-center select-none active:scale-[0.98] ${
                   isSelected
                     ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_8px_rgba(74,222,128,0.3)]'
                     : 'bg-[#222527] text-neutral-300 border-[#2e3235] hover:border-neutral-500 hover:text-white'
@@ -568,7 +610,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
         </div>
       </section>
 
-      {/* Switch Card & Keypad Display Row (shrink-0, 80px tall) */}
+      {/* Switch Card & Keypad Display Row (shrink-0, 80px tall, 25% larger text) */}
       <div className="shrink-0 grid grid-cols-2 gap-2 sm:gap-3">
         {/* Switch Button with 'Switch' text inside next to the icon */}
         <button
@@ -579,20 +621,18 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           aria-label={`Switch with previous pace of ${unitSystem === 'metric' ? previousSpeed.toFixed(1) + ' km/h' : kmhToMph(previousSpeed).toFixed(1) + ' mph'}`}
         >
           <div className="flex items-baseline gap-1 font-mono min-w-0">
-            <span className="text-2xl sm:text-3xl font-black text-white group-hover:text-emerald-400 transition leading-none">
+            <span className="text-[25px] sm:text-[32px] font-black tracking-tighter text-white group-hover:text-emerald-400 transition leading-none">
               {unitSystem === 'metric' ? previousSpeed.toFixed(1) : kmhToMph(previousSpeed).toFixed(1)}
             </span>
-            <span className="text-[11px] sm:text-sm font-semibold text-neutral-400">
+            <span className="text-[12px] sm:text-[15px] font-semibold text-neutral-400">
               {unitSystem === 'metric' ? 'km/h' : 'mph'}
             </span>
           </div>
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <span className="text-[11px] sm:text-sm font-bold text-neutral-300 uppercase tracking-wider select-none">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <span className="text-[13px] sm:text-[16px] font-bold text-neutral-300 uppercase tracking-tight select-none">
               Switch
             </span>
-            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-[#181a1b] border border-[#2e3235] flex items-center justify-center text-emerald-400 group-hover:rotate-180 transition duration-300 shrink-0">
-              <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            </div>
+            <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 group-hover:rotate-180 transition duration-300 shrink-0" />
           </div>
         </button>
 
@@ -605,10 +645,10 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             color: keypadValue !== '' ? '#000000' : '#d4d4d4',
             height: '80px',
           }}
-          className="h-[80px] flex items-center justify-between px-3 sm:px-3.5 rounded-xl border border-[#2e3235] text-right font-mono shadow-inner transition-colors"
+          className="h-[80px] flex items-center justify-between px-2.5 sm:px-3.5 rounded-xl border border-[#2e3235] text-right font-mono shadow-inner transition-colors"
         >
           <span
-            className={`text-xs font-bold uppercase tracking-wider font-sans ${
+            className={`text-[13px] sm:text-[15px] font-bold uppercase tracking-tight font-sans ${
               keypadValue !== '' ? 'text-black' : 'text-neutral-300'
             }`}
           >
@@ -616,14 +656,14 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           </span>
           <div className="flex items-baseline gap-1">
             <span
-              className={`text-2xl font-bold ${
+              className={`text-[28px] sm:text-[32px] font-bold tracking-tighter leading-none ${
                 keypadValue !== '' ? 'text-black' : 'text-neutral-300'
               }`}
             >
               {keypadValue || '—'}
             </span>
             <span
-              className={`text-xs sm:text-sm font-bold ${
+              className={`text-[13px] sm:text-[16px] font-bold ${
                 keypadValue !== '' ? 'text-black' : 'text-neutral-300'
               }`}
             >
@@ -633,13 +673,13 @@ export const PaceController: React.FC<PaceControllerProps> = ({
         </div>
       </div>
 
-      {/* Exact Pace Numpad (Enter Pace positioned above numbers 1, 2 & 3) */}
+      {/* Exact Pace Numpad (Enter Pace positioned above numbers 1, 2 & 3, 25% larger text) */}
       <section className="flex-1 min-h-0 flex flex-col gap-1.5 sm:gap-2 pb-0.5" aria-label="Exact pace numpad">
         <div className="flex-1 min-h-0 flex">
           <button
             onClick={applyKeypad}
             disabled={keypadValue === ''}
-            className={`w-full h-full rounded-xl font-bold flex items-center justify-center gap-2 text-base sm:text-lg uppercase tracking-wider transition cursor-pointer border ${
+            className={`w-full h-full rounded-xl font-bold flex items-center justify-center gap-2 text-[20px] sm:text-[22.5px] uppercase tracking-wider transition cursor-pointer border ${
               keypadValue !== ''
                 ? 'bg-[#4ade80] text-[#052e16] border-[#16a34a] border-b-4 hover:brightness-105 active:translate-y-1 active:border-b-0'
                 : 'bg-[#222527] text-neutral-500 border-[#2e3235] cursor-not-allowed opacity-60'
@@ -647,7 +687,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             aria-label="Enter typed pace"
           >
             <span>Enter pace</span>
-            <CornerDownLeft className="w-5 h-5" />
+            <CornerDownLeft className="w-6 h-6" />
           </button>
         </div>
 
@@ -656,7 +696,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             <button
               key={digit}
               onClick={() => pressKey(digit)}
-              className="btn-3d-keypad h-full w-full rounded-xl text-2xl font-bold font-mono cursor-pointer flex items-center justify-center active:scale-[0.99]"
+              className="btn-3d-keypad h-full w-full rounded-xl text-[30px] font-bold font-mono cursor-pointer flex items-center justify-center active:scale-[0.99]"
               aria-label={`Keypad digit ${digit}`}
             >
               {digit}
@@ -668,7 +708,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
             className="btn-3d-keypad h-full w-full rounded-xl flex items-center justify-center text-neutral-300 hover:text-red-400 cursor-pointer active:scale-[0.99]"
             aria-label="Delete last digit"
           >
-            <Delete className="w-6 h-6" />
+            <Delete className="w-[30px] h-[30px]" />
           </button>
         </div>
       </section>

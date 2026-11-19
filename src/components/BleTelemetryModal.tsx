@@ -90,10 +90,21 @@ export const BleTelemetryModal: React.FC<BleTelemetryModalProps> = ({
               Live 4-Byte Little-Endian Payload (0x2A53)
             </h3>
             <div className="p-4 rounded-xl bg-[#141517] border border-[#2e3235] font-mono">
-              <div className="flex items-baseline justify-between mb-3 border-b border-[#25282a] pb-2">
+              <div className="flex items-baseline justify-between mb-2 border-b border-[#25282a] pb-2">
                 <span className="text-xs text-neutral-400">Raw Hex Output:</span>
                 <span className="text-xl font-bold tracking-widest text-emerald-400">
                   {currentPacket.hexPayload}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center justify-between text-[11px] text-neutral-400 mb-3 gap-2">
+                <span>
+                  Exact m/s: <strong className="text-white">{currentPacket.speedMs.toFixed(4)} m/s</strong>
+                </span>
+                <span>
+                  BLE uint16 (×256): <strong className="text-emerald-400">{currentPacket.rawLittleEndianSpeed}</strong>
+                </span>
+                <span>
+                  Watch Decoded: <strong className="text-white">{currentPacket.decodedSpeedKmh.toFixed(4)} km/h</strong>
                 </span>
               </div>
 
@@ -147,7 +158,7 @@ export const BleTelemetryModal: React.FC<BleTelemetryModalProps> = ({
                         <span className="text-neutral-400">{item.timestamp}</span>
                         <span className="font-bold text-emerald-400">{item.packet.hexPayload}</span>
                         <span className="text-neutral-300">
-                          {item.packet.speedKmh.toFixed(1)} km/h ({item.packet.speedMs.toFixed(2)}{' '}
+                          {item.packet.speedKmh.toFixed(1)} km/h ({item.packet.speedMs.toFixed(4)}{' '}
                           m/s)
                         </span>
                       </div>
