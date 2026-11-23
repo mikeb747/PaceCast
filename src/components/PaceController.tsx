@@ -76,6 +76,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   const [dynamicIslandDebug, setDynamicIslandDebug] = useState<boolean>(false);
   const [islandOffsetY, setIslandOffsetY] = useState<number>(0);
   const [islandHeightDelta, setIslandHeightDelta] = useState<number>(0);
+  const titleHoldRef = useRef<number | null>(null);
 
   useEffect(() => {
     const updateClock = () => {
@@ -409,7 +410,36 @@ export const PaceController: React.FC<PaceControllerProps> = ({
         style={{ paddingRight: '6px', paddingLeft: '6px' }}
         className="shrink-0 flex items-center justify-between gap-1 pb-0.5 pt-0.5 px-0.5"
       >
-        <div className="flex items-baseline gap-1.5 sm:gap-2.5 min-w-0">
+        <div
+          onPointerDown={() => {
+            if (titleHoldRef.current !== null) window.clearTimeout(titleHoldRef.current);
+            titleHoldRef.current = window.setTimeout(() => {
+              const next = !(dynamicIslandPreview && dynamicIslandDebug);
+              setDynamicIslandPreview(next);
+              setDynamicIslandDebug(next);
+            }, 600);
+          }}
+          onPointerUp={() => {
+            if (titleHoldRef.current !== null) {
+              window.clearTimeout(titleHoldRef.current);
+              titleHoldRef.current = null;
+            }
+          }}
+          onPointerCancel={() => {
+            if (titleHoldRef.current !== null) {
+              window.clearTimeout(titleHoldRef.current);
+              titleHoldRef.current = null;
+            }
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            const next = !(dynamicIslandPreview && dynamicIslandDebug);
+            setDynamicIslandPreview(next);
+            setDynamicIslandDebug(next);
+          }}
+          title="Long-press on PaceCast to toggle Dynamic Island & DisplayCutout debug buttons"
+          className="flex items-baseline gap-1.5 sm:gap-2.5 min-w-0 select-none cursor-pointer"
+        >
           <h1 className="text-[22px] sm:text-[28px] font-black tracking-tight text-white leading-tight truncate">
             PaceCast
           </h1>

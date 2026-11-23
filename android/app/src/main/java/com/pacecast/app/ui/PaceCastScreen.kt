@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.BatteryManager
+import android.os.Build
 import android.provider.Settings
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -33,9 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -262,21 +266,12 @@ fun PaceCastScreen(
                 deviceCount = deviceCount,
                 isIslandDebugEnabled = isIslandDebugEnabled,
                 onToggleDebug = {
-                    if (!Settings.canDrawOverlays(context)) {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}")
-                        )
-                        context.startActivity(intent)
-                    } else {
-                        if (!isAdvertising) {
-                            onToggleAdvertising()
-                            com.pacecast.app.ble.SpeedStateManager.setIslandDebugEnabled(true)
-                        } else {
-                            com.pacecast.app.ble.SpeedStateManager.toggleIslandDebug()
-                        }
-                        com.pacecast.app.ble.BleForegroundService.refreshOverlay(context)
+                    val nextDebug = !isIslandDebugEnabled
+                    com.pacecast.app.ble.SpeedStateManager.setIslandDebugEnabled(nextDebug)
+                    if (nextDebug && !isAdvertising) {
+                        onToggleAdvertising()
                     }
+                    com.pacecast.app.ble.BleForegroundService.refreshOverlay(context)
                 },
                 onToggle = {
                     if (isAdvertising) {
@@ -286,6 +281,24 @@ fun PaceCastScreen(
                     }
                 }
             )
+
+            // In-App DisplayCutout & Dynamic Island Calibration Card (also stays visible as floating overlay when minimized)
+            if (isIslandDebugEnabled) {
+                IslandCutoutDebugCard(
+                    canDrawOverlays = canDrawOverlays,
+                    onRequestOverlayPermission = {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:${context.packageName}")
+                        )
+                        context.startActivity(intent)
+                    },
+                    onClose = {
+                        com.pacecast.app.ble.SpeedStateManager.setIslandDebugEnabled(false)
+                        com.pacecast.app.ble.BleForegroundService.refreshOverlay(context)
+                    }
+                )
+            }
 
             // Prompt to enable Dynamic Island overlay permission if not granted yet
             if (isAdvertising && !canDrawOverlays) {
@@ -626,6 +639,8 @@ private fun HeaderSection(
         }
     }
 
+    val haptic = LocalHapticFeedback.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -634,6 +649,17 @@ private fun HeaderSection(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onLongPress = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onToggleDebug()
+                        }
+                    )
+                }
+                .padding(end = 4.dp),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -675,29 +701,31 @@ private fun HeaderSection(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // DBG button: Toggles live Dynamic Island + floating DisplayCutout calibration card below status bar
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (isIslandDebugEnabled) MintGreen.copy(alpha = 0.2f) else CharcoalSurface)
-                    .border(
-                        width = 1.dp,
-                        color = if (isIslandDebugEnabled) MintGreen else CharcoalBorder,
-                        shape = RoundedCornerShape(14.dp)
+            // DBG badge only shown when enabled via long-pressing on the PaceCast text
+            if (isIslandDebugEnabled) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MintGreen.copy(alpha = 0.2f))
+                        .border(
+                            width = 1.dp,
+                            color = MintGreen,
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        .clickable { onToggleDebug() }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "DBG",
+                        color = MintGreen,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
                     )
-                    .clickable { onToggleDebug() }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "DBG",
-                    color = if (isIslandDebugEnabled) MintGreen else TextSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
+                }
             }
 
             Row(
@@ -710,9 +738,9 @@ private fun HeaderSection(
                         shape = RoundedCornerShape(20.dp)
                     )
                     .clickable { onToggle() }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -724,7 +752,7 @@ private fun HeaderSection(
                 Text(
                     text = statusText,
                     color = statusColor,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -732,10 +760,226 @@ private fun HeaderSection(
             Text(
                 text = "${batteryLevel}%",
                 color = Color(0xFF4ADE80),
-                fontSize = 15.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace
             )
+        }
+    }
+}
+
+@Composable
+private fun IslandCutoutDebugCard(
+    canDrawOverlays: Boolean,
+    onRequestOverlayPermission: () -> Unit,
+    onClose: () -> Unit
+) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val cutoutRect by com.pacecast.app.ble.SpeedStateManager.cameraCutoutRect.collectAsState()
+    val userYDelta by com.pacecast.app.ble.SpeedStateManager.islandYDeltaPx.collectAsState()
+    val userHDelta by com.pacecast.app.ble.SpeedStateManager.islandHeightDeltaPx.collectAsState()
+
+    val dm = context.resources.displayMetrics
+    val density = dm.density.coerceAtLeast(1f)
+    val sysCutout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        view.rootWindowInsets?.displayCutout
+    } else {
+        null
+    }
+
+    val activeRect = remember(cutoutRect, sysCutout) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
+            sysCutout.boundingRects.filter { !it.isEmpty }.minByOrNull { it.top } ?: cutoutRect
+        } else {
+            cutoutRect
+        }
+    }
+
+    val holeWidth = activeRect?.width() ?: 0
+    val basePillHeightPx = if (holeWidth > 0) (holeWidth + 10).coerceIn(75, 85) else 80
+    val pillHeightPx = (basePillHeightPx - 14 + userHDelta).coerceIn(40, 140)
+    val physicalCenterY = if (activeRect != null && holeWidth > 0 && activeRect.bottom > 0) {
+        if (activeRect.top == 0 && activeRect.bottom > holeWidth) {
+            activeRect.bottom - (holeWidth / 2)
+        } else {
+            activeRect.centerY()
+        }
+    } else {
+        68
+    }
+    val baseTargetY = physicalCenterY - (basePillHeightPx / 2)
+    val targetY = (baseTargetY - 9 + userYDelta).coerceAtLeast(0)
+
+    val safeInsetsStr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
+        "T=${sysCutout.safeInsetTop}px, B=${sysCutout.safeInsetBottom}px, L=${sysCutout.safeInsetLeft}px, R=${sysCutout.safeInsetRight}px"
+    } else {
+        "N/A"
+    }
+
+    val rectStr = if (activeRect != null) {
+        "L=${activeRect.left}, T=${activeRect.top}, R=${activeRect.right}, B=${activeRect.bottom}\n" +
+            "size=${activeRect.width()}x${activeRect.height()}px, center=(${activeRect.centerX()}, ${activeRect.centerY()})\n" +
+            "estLensTop=${activeRect.bottom - activeRect.width()}px, estLensCenterY=$physicalCenterY px"
+    } else {
+        "null (fallback used)"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF111315))
+            .border(1.dp, MintGreen, RoundedCornerShape(12.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "DYNAMIC ISLAND & CUTOUT DEBUG",
+                color = MintGreen,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                text = "✕",
+                color = TextSecondary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clickable { onClose() }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        }
+
+        Text(
+            text = buildString {
+                append("DISPLAY CUTOUT:\n")
+                append("  $rectStr\n")
+                append("  safeInsets: $safeInsetsStr\n")
+                append("  screen: ${dm.widthPixels}x${dm.heightPixels}px (${String.format(Locale.US, "%.2f", density)}x)\n")
+                append("DYNAMIC ISLAND OVERLAY:\n")
+                append("  top (y): $targetY px (${String.format(Locale.US, "%.1f", targetY / density)} dp) [adj=${userYDelta}px]\n")
+                append("  height:  $pillHeightPx px (${String.format(Locale.US, "%.1f", pillHeightPx / density)} dp) [adj=${userHDelta}px]\n")
+                append("  bottom:  ${targetY + pillHeightPx} px (centerY=${targetY + pillHeightPx / 2} px)")
+            },
+            color = TextPrimary,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            lineHeight = 15.sp
+        )
+
+        if (!canDrawOverlays) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF064E3B))
+                    .clickable { onRequestOverlayPermission() }
+                    .padding(vertical = 6.dp, horizontal = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Grant 'Display over other apps' to view Floating Island",
+                    color = MintGreen,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf(
+                "Y -1px" to (-1 to 0),
+                "Y +1px" to (1 to 0),
+                "H -2px" to (0 to -2),
+                "H +2px" to (0 to 2)
+            ).forEach { (label, delta) ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(CharcoalSurface)
+                        .border(1.dp, CharcoalBorder, RoundedCornerShape(6.dp))
+                        .clickable {
+                            com.pacecast.app.ble.SpeedStateManager.adjustIslandMetrics(
+                                dY = delta.first,
+                                dH = delta.second,
+                                reset = false,
+                                context = context
+                            )
+                            com.pacecast.app.ble.BleForegroundService.refreshOverlay(context)
+                        }
+                        .padding(vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        color = MintGreen,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(CharcoalSurface)
+                    .border(1.dp, CharcoalBorder, RoundedCornerShape(6.dp))
+                    .clickable {
+                        com.pacecast.app.ble.SpeedStateManager.adjustIslandMetrics(
+                            dY = 0,
+                            dH = 0,
+                            reset = true,
+                            context = context
+                        )
+                        com.pacecast.app.ble.BleForegroundService.refreshOverlay(context)
+                    }
+                    .padding(vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Reset",
+                    color = Color(0xFFFCD34D),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF16A34A))
+                    .clickable { onClose() }
+                    .padding(vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Close Debug",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
         }
     }
 }

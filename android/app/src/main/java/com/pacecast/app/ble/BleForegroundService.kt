@@ -202,6 +202,16 @@ class BleForegroundService : Service() {
                     updateDynamicIslandOverlay()
                 }
             }
+            launch {
+                SpeedStateManager.islandYDeltaPx.collect {
+                    applyCutoutPositionAndSize()
+                }
+            }
+            launch {
+                SpeedStateManager.islandHeightDeltaPx.collect {
+                    applyCutoutPositionAndSize()
+                }
+            }
         }
     }
 
@@ -278,28 +288,15 @@ class BleForegroundService : Service() {
     }
 
     private fun getUserYDeltaPx(): Int {
-        val prefs = getSharedPreferences("pacecast_prefs", Context.MODE_PRIVATE)
-        return prefs.getInt("island_user_y_delta_px", 0)
+        return SpeedStateManager.islandYDeltaPx.value
     }
 
     private fun getUserHeightDeltaPx(): Int {
-        val prefs = getSharedPreferences("pacecast_prefs", Context.MODE_PRIVATE)
-        return prefs.getInt("island_user_h_delta_px", 0)
+        return SpeedStateManager.islandHeightDeltaPx.value
     }
 
     private fun adjustUserIslandMetrics(dY: Int, dH: Int, reset: Boolean = false) {
-        val prefs = getSharedPreferences("pacecast_prefs", Context.MODE_PRIVATE)
-        if (reset) {
-            prefs.edit()
-                .putInt("island_user_y_delta_px", 0)
-                .putInt("island_user_h_delta_px", 0)
-                .apply()
-        } else {
-            prefs.edit()
-                .putInt("island_user_y_delta_px", getUserYDeltaPx() + dY)
-                .putInt("island_user_h_delta_px", getUserHeightDeltaPx() + dH)
-                .apply()
-        }
+        SpeedStateManager.adjustIslandMetrics(dY, dH, reset, this)
         applyCutoutPositionAndSize()
         refreshDebugOverlayText()
     }
@@ -636,7 +633,7 @@ class BleForegroundService : Service() {
 
         applyCutoutPositionAndSize()
 
-        if (SpeedStateManager.isIslandDebugEnabled.value) {
+        if (SpeedStateManager.isIslandDebugEnabled.value && !SpeedStateManager.isAppInForeground.value) {
             showDebugOverlay()
             refreshDebugOverlayText()
         } else {
