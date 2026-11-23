@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity() {
         enableFullScreenImmersive()
 
         SpeedStateManager.init(this)
+        setupDisplayCutoutObserver()
         bleServer = BleRscServer(this)
         watchDetector = WatchConnectionDetector(this)
         watchDetector.start()
@@ -116,10 +117,41 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        captureDisplayCutout()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             enableFullScreenImmersive()
+            captureDisplayCutout()
+        }
+    }
+
+    private fun setupDisplayCutoutObserver() {
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
+            val cutout = insets.displayCutout
+            val topRect = cutout?.boundingRects
+                ?.filter { !it.isEmpty }
+                ?.minByOrNull { it.top }
+            if (topRect != null) {
+                SpeedStateManager.updateCameraCutoutRect(topRect, this)
+            }
+            androidx.core.view.ViewCompat.onApplyWindowInsets(view, insets)
+        }
+    }
+
+    private fun captureDisplayCutout() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val cutout = window.decorView.rootWindowInsets?.displayCutout
+            val topRect = cutout?.boundingRects
+                ?.filter { !it.isEmpty }
+                ?.minByOrNull { it.top }
+            if (topRect != null) {
+                SpeedStateManager.updateCameraCutoutRect(topRect, this)
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 package com.pacecast.app.ble
 
 import android.content.Context
+import android.graphics.Rect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,6 +12,10 @@ object SpeedStateManager {
     private const val KEY_CURRENT_SPEED = "current_speed"
     private const val KEY_PREVIOUS_SPEED = "previous_speed"
     private const val KEY_UNIT_SYSTEM = "unit_system"
+    private const val KEY_CUTOUT_LEFT = "cutout_left"
+    private const val KEY_CUTOUT_TOP = "cutout_top"
+    private const val KEY_CUTOUT_RIGHT = "cutout_right"
+    private const val KEY_CUTOUT_BOTTOM = "cutout_bottom"
 
     private val _currentSpeed = MutableStateFlow(16.8f)
     val currentSpeed: StateFlow<Float> = _currentSpeed.asStateFlow()
@@ -33,6 +38,9 @@ object SpeedStateManager {
     private val _isAdvertising = MutableStateFlow(false)
     val isAdvertising: StateFlow<Boolean> = _isAdvertising.asStateFlow()
 
+    private val _cameraCutoutRect = MutableStateFlow<Rect?>(null)
+    val cameraCutoutRect: StateFlow<Rect?> = _cameraCutoutRect.asStateFlow()
+
     fun updateConnectedDeviceCount(count: Int) {
         _connectedDeviceCount.value = count
     }
@@ -49,11 +57,30 @@ object SpeedStateManager {
         _isAdvertising.value = advertising
     }
 
+    fun updateCameraCutoutRect(rect: Rect, context: Context? = null) {
+        if (rect.isEmpty) return
+        _cameraCutoutRect.value = Rect(rect)
+        context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit()?.apply {
+            putInt(KEY_CUTOUT_LEFT, rect.left)
+            putInt(KEY_CUTOUT_TOP, rect.top)
+            putInt(KEY_CUTOUT_RIGHT, rect.right)
+            putInt(KEY_CUTOUT_BOTTOM, rect.bottom)
+            apply()
+        }
+    }
+
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         _currentSpeed.value = prefs.getFloat(KEY_CURRENT_SPEED, 16.8f)
         _previousSpeed.value = prefs.getFloat(KEY_PREVIOUS_SPEED, 6.0f)
         _unitSystem.value = prefs.getString(KEY_UNIT_SYSTEM, "metric") ?: "metric"
+        val left = prefs.getInt(KEY_CUTOUT_LEFT, -1)
+        val top = prefs.getInt(KEY_CUTOUT_TOP, -1)
+        val right = prefs.getInt(KEY_CUTOUT_RIGHT, -1)
+        val bottom = prefs.getInt(KEY_CUTOUT_BOTTOM, -1)
+        if (left >= 0 && top >= 0 && right > left && bottom > top) {
+            _cameraCutoutRect.value = Rect(left, top, right, bottom)
+        }
     }
 
     fun setSpeed(speed: Float, context: Context? = null) {
