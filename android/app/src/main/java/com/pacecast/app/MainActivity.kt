@@ -133,15 +133,11 @@ class MainActivity : ComponentActivity() {
     private fun setupDisplayCutoutObserver() {
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, windowInsets ->
             val cutout = windowInsets.displayCutout
-            if (cutout != null) {
-                val holeRect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    cutout.boundingRectTop
-                } else {
-                    cutout.boundingRects.filter { !it.isEmpty }.minByOrNull { it.top }
-                }
-                if (holeRect != null && !holeRect.isEmpty) {
-                    SpeedStateManager.updateCameraCutoutRect(holeRect, this)
-                }
+            val holeRect = cutout?.boundingRects
+                ?.filter { !it.isEmpty }
+                ?.minByOrNull { it.top }
+            if (holeRect != null) {
+                SpeedStateManager.updateCameraCutoutRect(holeRect, this)
             }
             androidx.core.view.ViewCompat.onApplyWindowInsets(view, windowInsets)
         }
@@ -150,15 +146,11 @@ class MainActivity : ComponentActivity() {
     private fun captureDisplayCutout() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val cutout = window.decorView.rootWindowInsets?.displayCutout
-            if (cutout != null) {
-                val holeRect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    cutout.boundingRectTop
-                } else {
-                    cutout.boundingRects.filter { !it.isEmpty }.minByOrNull { it.top }
-                }
-                if (holeRect != null && !holeRect.isEmpty) {
-                    SpeedStateManager.updateCameraCutoutRect(holeRect, this)
-                }
+            val holeRect = cutout?.boundingRects
+                ?.filter { !it.isEmpty }
+                ?.minByOrNull { it.top }
+            if (holeRect != null) {
+                SpeedStateManager.updateCameraCutoutRect(holeRect, this)
             }
         }
     }

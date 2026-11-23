@@ -222,8 +222,8 @@ class BleForegroundService : Service() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val metricsCutout = windowManager?.currentWindowMetrics?.windowInsets?.displayCutout
-            val rect = metricsCutout?.boundingRectTop
-            if (rect != null && !rect.isEmpty) {
+            val rect = metricsCutout?.boundingRects?.filter { !it.isEmpty }?.minByOrNull { it.top }
+            if (rect != null) {
                 found = rect
             }
         }
@@ -231,8 +231,8 @@ class BleForegroundService : Service() {
         if (found == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             @Suppress("DEPRECATION")
             val displayCutout = windowManager?.defaultDisplay?.cutout
-            val rect = displayCutout?.boundingRectTop
-            if (rect != null && !rect.isEmpty) {
+            val rect = displayCutout?.boundingRects?.filter { !it.isEmpty }?.minByOrNull { it.top }
+            if (rect != null) {
                 found = rect
             }
         }
