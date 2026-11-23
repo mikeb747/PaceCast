@@ -246,22 +246,24 @@ class BleForegroundService : Service() {
     }
 
     /**
-     * Computes (pillHeightPx, spacerWidthPx, yOffsetPx) from DisplayCutout.boundingRectTop.
-     * Note: holeRect.top is always 0 (anchored to the screen edge), while holeRect.left,
-     * holeRect.right, and holeRect.bottom hug the physical punch-hole closely.
+     * Computes (pillHeightPx, spacerWidthPx, yOffsetPx) from DisplayCutout boundingRects.
+     * Calibrated for the physical punch-hole lens:
+     * - Top edge shifted up by 9px (3dp / ~0.45mm)
+     * - Total height reduced by 24px (8dp / ~1.25mm), shifting bottom edge up by 33px (~1.7mm)
      */
     private fun computeIslandMetrics(holeRect: Rect?): Triple<Int, Int, Int> {
         val holeWidth = holeRect?.width() ?: 0
-        // Island height is 75-85 pixels
-        val pillHeightPx = if (holeWidth > 0) {
+        val basePillHeightPx = if (holeWidth > 0) {
             (holeWidth + 10).coerceIn(75, 85)
         } else {
             80
         }
+        val pillHeightPx = (basePillHeightPx - 24).coerceAtLeast(48)
+
         val spacerWidthPx = if (holeWidth > 0) {
-            holeWidth + dpToPx(8)
+            maxOf(holeWidth - dpToPx(2), dpToPx(26))
         } else {
-            dpToPx(34)
+            dpToPx(28)
         }
 
         val physicalCenterY = if (holeRect != null && holeWidth > 0 && holeRect.bottom > 0) {
@@ -274,7 +276,8 @@ class BleForegroundService : Service() {
             68
         }
 
-        val targetY = (physicalCenterY - (pillHeightPx / 2)).coerceAtLeast(0)
+        val baseTargetY = physicalCenterY - (basePillHeightPx / 2)
+        val targetY = (baseTargetY - 9).coerceAtLeast(0)
         return Triple(pillHeightPx, spacerWidthPx, targetY)
     }
 
