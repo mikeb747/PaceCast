@@ -59,6 +59,7 @@ object SpeedStateManager {
 
     fun updateCameraCutoutRect(rect: Rect, context: Context? = null) {
         if (rect.isEmpty) return
+        if (_cameraCutoutRect.value == rect) return
         _cameraCutoutRect.value = Rect(rect)
         context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit()?.apply {
             putInt(KEY_CUTOUT_LEFT, rect.left)
