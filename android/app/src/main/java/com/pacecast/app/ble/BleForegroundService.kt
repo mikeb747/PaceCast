@@ -47,6 +47,7 @@ class BleForegroundService : Service() {
         const val ACTION_STOP = "com.pacecast.app.ACTION_STOP"
         const val ACTION_SWAP_PACE = "com.pacecast.app.ACTION_SWAP_PACE"
         const val ACTION_REFRESH_OVERLAY = "com.pacecast.app.ACTION_REFRESH_OVERLAY"
+        const val ACTION_TOGGLE_DEBUG = "com.pacecast.app.ACTION_TOGGLE_DEBUG"
 
         fun startService(context: Context) {
             val intent = Intent(context, BleForegroundService::class.java).apply {
@@ -120,6 +121,11 @@ class BleForegroundService : Service() {
             ACTION_REFRESH_OVERLAY -> {
                 updateDynamicIslandOverlay()
             }
+            ACTION_TOGGLE_DEBUG -> {
+                SpeedStateManager.toggleIslandDebug()
+                updateNotification()
+                updateDynamicIslandOverlay()
+            }
             ACTION_START, null -> {
                 startForegroundWithNotification()
                 observeSpeedChanges()
@@ -190,6 +196,12 @@ class BleForegroundService : Service() {
                     applyCutoutPositionAndSize()
                 }
             }
+            launch {
+                SpeedStateManager.isIslandDebugEnabled.collect {
+                    updateNotification()
+                    updateDynamicIslandOverlay()
+                }
+            }
         }
     }
 
@@ -230,9 +242,10 @@ class BleForegroundService : Service() {
         } else {
             true
         }
+        // Show when minimized while broadcasting, OR while in-app if Island Debug mode is active
         return hasOverlayPermission &&
             SpeedStateManager.isAdvertising.value &&
-            !SpeedStateManager.isAppInForeground.value
+            (!SpeedStateManager.isAppInForeground.value || SpeedStateManager.isIslandDebugEnabled.value)
     }
 
     private fun resolveSystemDisplayCutout(): android.view.DisplayCutout? {
@@ -429,10 +442,12 @@ class BleForegroundService : Service() {
     }
 
     private fun toggleDebugOverlay() {
-        if (debugOverlayView != null) {
-            removeDebugOverlay()
-        } else {
+        val next = debugOverlayView == null
+        SpeedStateManager.setIslandDebugEnabled(next)
+        if (next) {
             showDebugOverlay()
+        } else {
+            removeDebugOverlay()
         }
     }
 
@@ -521,6 +536,7 @@ class BleForegroundService : Service() {
             )
         }
         actionRow.addView(createDebugActionButton("Open App", "#2563EB", "#FFFFFF") {
+            SpeedStateManager.setIslandDebugEnabled(false)
             removeDebugOverlay()
             val openIntent = Intent(this@BleForegroundService, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -533,6 +549,7 @@ class BleForegroundService : Service() {
             adjustUserIslandMetrics(0, 0, reset = true)
         })
         actionRow.addView(createDebugActionButton("Close", "#16A34A", "#FFFFFF") {
+            SpeedStateManager.setIslandDebugEnabled(false)
             removeDebugOverlay()
         })
 
@@ -548,17 +565,27 @@ class BleForegroundService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        // Guarantee debug card sits below safeInsetTop (status bar touch-intercept zone) so all buttons receive touches
+        val sysCutout = resolveSystemDisplayCutout()
+        val safeTop = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
+            sysCutout.safeInsetTop
+        } else {
+            holeRect?.bottom ?: dpToPx(44)
+        }
+        val safeDebugY = maxOf(safeTop + dpToPx(8), targetY + pillHeightPx + dpToPx(10), dpToPx(48))
+
         val debugParams = WindowManager.LayoutParams(
             dpToPx(330),
             WindowManager.LayoutParams.WRAP_CONTENT,
             overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             x = 0
-            y = targetY + pillHeightPx + dpToPx(10)
+            y = safeDebugY
         }
 
         try {
@@ -608,6 +635,13 @@ class BleForegroundService : Service() {
         }
 
         applyCutoutPositionAndSize()
+
+        if (SpeedStateManager.isIslandDebugEnabled.value) {
+            showDebugOverlay()
+            refreshDebugOverlayText()
+        } else {
+            removeDebugOverlay()
+        }
     }
 
     private fun createAndAttachDynamicIsland() {
@@ -814,6 +848,18 @@ class BleForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Action to toggle Dynamic Island & DisplayCutout debug panel (positioned below status bar touch zone)
+        val debugIntent = Intent(this, BleForegroundService::class.java).apply {
+            action = ACTION_TOGGLE_DEBUG
+        }
+        val debugPendingIntent = PendingIntent.getService(
+            this,
+            2,
+            debugIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val debugLabel = if (SpeedStateManager.isIslandDebugEnabled.value) "Hide Debug" else "Island Debug"
+
         val isConnected = SpeedStateManager.connectedDeviceCount.value > 0
         val connectionStatus = if (isConnected) "Connected to Watch" else "Broadcasting"
 
@@ -831,6 +877,13 @@ class BleForegroundService : Service() {
                     R.drawable.ic_launcher_foreground,
                     "Switch to $displayPrevSpeed $unitLabel",
                     swapPendingIntent
+                ).build()
+            )
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    R.drawable.ic_launcher_foreground,
+                    debugLabel,
+                    debugPendingIntent
                 ).build()
             )
             .build()

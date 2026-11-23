@@ -41,6 +41,9 @@ object SpeedStateManager {
     private val _cameraCutoutRect = MutableStateFlow<Rect?>(null)
     val cameraCutoutRect: StateFlow<Rect?> = _cameraCutoutRect.asStateFlow()
 
+    private val _isIslandDebugEnabled = MutableStateFlow(false)
+    val isIslandDebugEnabled: StateFlow<Boolean> = _isIslandDebugEnabled.asStateFlow()
+
     fun updateConnectedDeviceCount(count: Int) {
         _connectedDeviceCount.value = count
     }
@@ -55,6 +58,17 @@ object SpeedStateManager {
 
     fun setAdvertising(advertising: Boolean) {
         _isAdvertising.value = advertising
+        if (!advertising) {
+            _isIslandDebugEnabled.value = false
+        }
+    }
+
+    fun setIslandDebugEnabled(enabled: Boolean) {
+        _isIslandDebugEnabled.value = enabled
+    }
+
+    fun toggleIslandDebug() {
+        _isIslandDebugEnabled.value = !_isIslandDebugEnabled.value
     }
 
     fun updateCameraCutoutRect(rect: Rect, context: Context? = null) {

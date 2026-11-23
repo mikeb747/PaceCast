@@ -445,16 +445,21 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           </button>
 
           <button
-            onClick={() => setDynamicIslandPreview((prev) => !prev)}
-            className={`p-1 sm:p-1.5 rounded-xl border transition cursor-pointer ${
+            onClick={() => {
+              const next = !(dynamicIslandPreview && dynamicIslandDebug);
+              setDynamicIslandPreview(next);
+              setDynamicIslandDebug(next);
+            }}
+            className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-xl border font-mono text-[10px] sm:text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
               dynamicIslandPreview && isBroadcasting
                 ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300 shadow-[0_0_10px_rgba(74,222,128,0.25)]'
                 : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30'
             }`}
-            title="Preview Dynamic Island overlay (shown on either side of top camera cutout when minimised while broadcasting)"
-            aria-label="Preview Dynamic Island overlay"
+            title="Toggle Dynamic Island & DisplayCutout debug panel (positioned below safeInsetTop so buttons receive touches)"
+            aria-label="Toggle Dynamic Island and DisplayCutout debug panel"
           >
-            <Smartphone className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <Smartphone className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+            <span>DBG</span>
           </button>
 
           <button

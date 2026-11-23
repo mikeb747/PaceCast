@@ -255,10 +255,29 @@ fun PaceCastScreen(
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Header with status pill (confirmation dialog on turn-off)
+            // Header with status pill and Island Debug toggle (confirmation dialog on turn-off)
+            val isIslandDebugEnabled by com.pacecast.app.ble.SpeedStateManager.isIslandDebugEnabled.collectAsState()
             HeaderSection(
                 isAdvertising = isAdvertising,
                 deviceCount = deviceCount,
+                isIslandDebugEnabled = isIslandDebugEnabled,
+                onToggleDebug = {
+                    if (!Settings.canDrawOverlays(context)) {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:${context.packageName}")
+                        )
+                        context.startActivity(intent)
+                    } else {
+                        if (!isAdvertising) {
+                            onToggleAdvertising()
+                            com.pacecast.app.ble.SpeedStateManager.setIslandDebugEnabled(true)
+                        } else {
+                            com.pacecast.app.ble.SpeedStateManager.toggleIslandDebug()
+                        }
+                        com.pacecast.app.ble.BleForegroundService.refreshOverlay(context)
+                    }
+                },
                 onToggle = {
                     if (isAdvertising) {
                         showStopBroadcastingDialog = true
@@ -558,6 +577,8 @@ fun PaceCastScreen(
 private fun HeaderSection(
     isAdvertising: Boolean,
     deviceCount: Int,
+    isIslandDebugEnabled: Boolean,
+    onToggleDebug: () -> Unit,
     onToggle: () -> Unit
 ) {
     val context = LocalContext.current
@@ -654,8 +675,31 @@ private fun HeaderSection(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            // DBG button: Toggles live Dynamic Island + floating DisplayCutout calibration card below status bar
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (isIslandDebugEnabled) MintGreen.copy(alpha = 0.2f) else CharcoalSurface)
+                    .border(
+                        width = 1.dp,
+                        color = if (isIslandDebugEnabled) MintGreen else CharcoalBorder,
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    .clickable { onToggleDebug() }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "DBG",
+                    color = if (isIslandDebugEnabled) MintGreen else TextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
@@ -666,9 +710,9 @@ private fun HeaderSection(
                         shape = RoundedCornerShape(20.dp)
                     )
                     .clickable { onToggle() }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -680,7 +724,7 @@ private fun HeaderSection(
                 Text(
                     text = statusText,
                     color = statusColor,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -688,7 +732,7 @@ private fun HeaderSection(
             Text(
                 text = "${batteryLevel}%",
                 color = Color(0xFF4ADE80),
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace
             )
