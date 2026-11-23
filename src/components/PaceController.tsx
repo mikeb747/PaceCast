@@ -9,6 +9,7 @@ import {
   Layers,
   X,
   Check,
+  Smartphone,
 } from 'lucide-react';
 import {
   clampSpeed,
@@ -69,6 +70,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
 
   // Live battery percentage indicator in top right (#4ade80)
   const [batteryLevel, setBatteryLevel] = useState<number>(55);
+
+  // Preview state for the Android Dynamic Island overlay when minimised while broadcasting
+  const [dynamicIslandPreview, setDynamicIslandPreview] = useState<boolean>(false);
 
   useEffect(() => {
     const updateClock = () => {
@@ -438,6 +442,19 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           </button>
 
           <button
+            onClick={() => setDynamicIslandPreview((prev) => !prev)}
+            className={`p-1 sm:p-1.5 rounded-xl border transition cursor-pointer ${
+              dynamicIslandPreview && isBroadcasting
+                ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300 shadow-[0_0_10px_rgba(74,222,128,0.25)]'
+                : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30'
+            }`}
+            title="Preview Dynamic Island overlay (shown on either side of top camera cutout when minimised while broadcasting)"
+            aria-label="Preview Dynamic Island overlay"
+          >
+            <Smartphone className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
+
+          <button
             onClick={onOpenAndroidCode}
             className="p-1 sm:p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
             title="View Kotlin & Compose Android source code"
@@ -476,6 +493,42 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           </span>
         </div>
       </header>
+
+      {/* Dynamic Island Live Overlay Preview (flanking either side of top front-facing camera island when minimised while broadcasting) */}
+      {dynamicIslandPreview && isBroadcasting && (
+        <aside
+          onClick={() => setDynamicIslandPreview(false)}
+          title="Dynamic Island Overlay (tap to return to full app)"
+          aria-label="Dynamic Island live broadcast speed overlay"
+          className="fixed top-1.5 left-1/2 -translate-x-1/2 z-50 flex items-center bg-[#08090a] border border-emerald-400/55 rounded-full px-3 py-1 shadow-[0_4px_20px_rgba(0,0,0,0.85),0_0_14px_rgba(74,222,128,0.22)] cursor-pointer select-none animate-fade-in"
+        >
+          {/* Left side of front camera island: Live broadcasting dot + Speed */}
+          <div className="flex items-center gap-1.5 pr-1">
+            <span className="w-2 h-2 rounded-full bg-[#4ade80] animate-pulse-dot shrink-0" />
+            <span className="font-mono text-xs sm:text-[13px] font-black text-white tracking-tight whitespace-nowrap">
+              {unitSystem === 'metric'
+                ? `${speed.toFixed(1)} km/h`
+                : `${kmhToMph(speed).toFixed(1)} mph`}
+            </span>
+          </div>
+
+          {/* Center front-facing camera island cutout */}
+          <div className="w-9 flex items-center justify-center shrink-0">
+            <span className="w-4 h-4 rounded-full bg-black border border-neutral-800 shadow-inner flex items-center justify-center">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#16202a]" />
+            </span>
+          </div>
+
+          {/* Right side of front camera island: Live Pace */}
+          <div className="flex items-center pl-1">
+            <span className="font-mono text-xs sm:text-[13px] font-black text-[#4ade80] tracking-tight whitespace-nowrap">
+              {unitSystem === 'metric'
+                ? `${formatPace(speed)} /km`
+                : `${formatPaceMile(speed)} /mi`}
+            </span>
+          </div>
+        </aside>
+      )}
 
       {/* Current Pace & Speed Card (shrink-0, compacted height) */}
       <section

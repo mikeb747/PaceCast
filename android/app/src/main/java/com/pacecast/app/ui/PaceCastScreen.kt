@@ -4,7 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.BatteryManager
+import android.provider.Settings
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -33,11 +35,14 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.pacecast.app.ble.BleRscServer
 import com.pacecast.app.ui.theme.*
 import kotlinx.coroutines.delay
@@ -76,7 +81,24 @@ fun PaceCastScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val prefs = remember { context.getSharedPreferences("pacecast_prefs", Context.MODE_PRIVATE) }
+
+    var canDrawOverlays by remember {
+        mutableStateOf(Settings.canDrawOverlays(context))
+    }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                canDrawOverlays = Settings.canDrawOverlays(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     val isAdvertising by bleServer.isAdvertising.collectAsState()
     val deviceCount by bleServer.subscribedDeviceCount.collectAsState()
@@ -244,6 +266,19 @@ fun PaceCastScreen(
                     }
                 }
             )
+
+            // Prompt to enable Dynamic Island overlay permission if not granted yet
+            if (isAdvertising && !canDrawOverlays) {
+                DynamicIslandPermissionBanner(
+                    onRequestPermission = {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:${context.packageName}")
+                        )
+                        context.startActivity(intent)
+                    }
+                )
+            }
 
             // Warning banner if Garmin/Watch phone link is active and foot pod is not connected yet
             if (isAdvertising && deviceCount == 0 && activePhoneLinkWatchName != null) {
@@ -690,6 +725,46 @@ private fun GarminPhoneLinkWarningBanner(watchName: String) {
                 lineHeight = 15.sp
             )
         }
+    }
+}
+
+@Composable
+private fun DynamicIslandPermissionBanner(onRequestPermission: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFF0A2216))
+            .border(1.dp, MintGreen.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+            .clickable { onRequestPermission() }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(MintGreen)
+            )
+            Text(
+                text = "Dynamic Island: Tap to allow live speed overlay when minimised",
+                color = MintGreen,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowRight,
+            contentDescription = "Enable Dynamic Island",
+            tint = MintGreen,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 

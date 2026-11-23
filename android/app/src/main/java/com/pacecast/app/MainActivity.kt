@@ -203,17 +203,37 @@ class MainActivity : ComponentActivity() {
         startAdvertisingWithPermissions()
     }
 
+    override fun onResume() {
+        super.onResume()
+        SpeedStateManager.setAppInForeground(true)
+        if (bleServer.isAdvertising.value) {
+            BleForegroundService.refreshOverlay(this)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        SpeedStateManager.setAppInForeground(false)
+        if (bleServer.isAdvertising.value) {
+            BleForegroundService.refreshOverlay(this)
+        }
+    }
+
     override fun onStop() {
         super.onStop()
+        SpeedStateManager.setAppInForeground(false)
         // If we stopped broadcasting and the app is closed/backgrounded, do not keep any service or wake lock alive
         if (!bleServer.isAdvertising.value) {
             BleForegroundService.stopService(this)
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            BleForegroundService.refreshOverlay(this)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        SpeedStateManager.setAppInForeground(false)
         watchDetector.stop()
         bleServer.shutdown()
         BleForegroundService.stopService(this)
@@ -233,11 +253,11 @@ fun PaceCastAppContent(
     LaunchedEffect(Unit) {
         splashScale.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 350)
+            animationSpec = tween(durationMillis = 500)
         )
         splashAlpha.animateTo(
             targetValue = 0f,
-            animationSpec = tween(durationMillis = 500)
+            animationSpec = tween(durationMillis = 700)
         )
         showSplash = false
     }

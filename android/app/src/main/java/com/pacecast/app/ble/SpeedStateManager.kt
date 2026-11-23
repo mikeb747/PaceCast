@@ -27,12 +27,26 @@ object SpeedStateManager {
     private val _activePhoneLinkWatchName = MutableStateFlow<String?>(null)
     val activePhoneLinkWatchName: StateFlow<String?> = _activePhoneLinkWatchName.asStateFlow()
 
+    private val _isAppInForeground = MutableStateFlow(true)
+    val isAppInForeground: StateFlow<Boolean> = _isAppInForeground.asStateFlow()
+
+    private val _isAdvertising = MutableStateFlow(false)
+    val isAdvertising: StateFlow<Boolean> = _isAdvertising.asStateFlow()
+
     fun updateConnectedDeviceCount(count: Int) {
         _connectedDeviceCount.value = count
     }
 
     fun updateActivePhoneLinkWatchName(name: String?) {
         _activePhoneLinkWatchName.value = name
+    }
+
+    fun setAppInForeground(inForeground: Boolean) {
+        _isAppInForeground.value = inForeground
+    }
+
+    fun setAdvertising(advertising: Boolean) {
+        _isAdvertising.value = advertising
     }
 
     fun init(context: Context) {

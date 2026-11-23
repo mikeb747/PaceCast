@@ -59,12 +59,14 @@ class BleRscServer(private val context: Context) {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
             super.onStartSuccess(settingsInEffect)
             _isAdvertising.value = true
+            SpeedStateManager.setAdvertising(true)
             Log.d(TAG, "BLE advertising started successfully")
         }
 
         override fun onStartFailure(errorCode: Int) {
             super.onStartFailure(errorCode)
             _isAdvertising.value = false
+            SpeedStateManager.setAdvertising(false)
             Log.e(TAG, "BLE advertising failed with code $errorCode")
         }
     }
@@ -200,6 +202,8 @@ class BleRscServer(private val context: Context) {
             .build()
 
         bluetoothLeAdvertiser?.startAdvertising(settings, advertiseData, advertiseCallback)
+        _isAdvertising.value = true
+        SpeedStateManager.setAdvertising(true)
         start1HzBroadcastLoop()
     }
 
@@ -278,6 +282,7 @@ class BleRscServer(private val context: Context) {
         }
 
         _isAdvertising.value = false
+        SpeedStateManager.setAdvertising(false)
     }
 
     fun shutdown() {
