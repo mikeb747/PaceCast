@@ -511,7 +511,7 @@ class BleForegroundService : Service() {
         nudgeRow.addView(createDebugActionButton("H -2px") { adjustUserIslandMetrics(0, -2) })
         nudgeRow.addView(createDebugActionButton("H +2px") { adjustUserIslandMetrics(0, +2) })
 
-        // Row 2: Reset & Close buttons
+        // Row 2: Open App, Reset & Close buttons
         val actionRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -520,10 +520,19 @@ class BleForegroundService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
+        actionRow.addView(createDebugActionButton("Open App", "#2563EB", "#FFFFFF") {
+            removeDebugOverlay()
+            val openIntent = Intent(this@BleForegroundService, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            startActivity(openIntent)
+        })
         actionRow.addView(createDebugActionButton("Reset", "#2A2E33", "#FCD34D") {
             adjustUserIslandMetrics(0, 0, reset = true)
         })
-        actionRow.addView(createDebugActionButton("Close Debug", "#16A34A", "#FFFFFF") {
+        actionRow.addView(createDebugActionButton("Close", "#16A34A", "#FFFFFF") {
             removeDebugOverlay()
         })
 
@@ -614,25 +623,14 @@ class BleForegroundService : Service() {
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = initialPillHeight
             setPadding(dpToPx(8), 0, dpToPx(8), 0)
-            isLongClickable = true
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = initialPillHeight / 2f
                 setColor(Color.parseColor("#000000"))
             }
             setOnClickListener {
-                // Tap Dynamic Island to return to PaceCast
-                val openIntent = Intent(this@BleForegroundService, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP
-                }
-                startActivity(openIntent)
-            }
-            setOnLongClickListener {
-                // Long press on Dynamic Island to display system DisplayCutout & island position/height debug panel
+                // Short press on Dynamic Island to display system DisplayCutout & island position/height debug panel
                 toggleDebugOverlay()
-                true
             }
         }
 

@@ -240,11 +240,12 @@ fun PaceCastScreen(
         }
     }
 
-    // Pure black full-screen background
+    // Pure black full-screen background with bottom gesture navigation bar inset
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
+            .navigationBarsPadding()
             .padding(horizontal = 4.dp, vertical = 4.dp),
         contentAlignment = Alignment.TopCenter
     ) {

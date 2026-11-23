@@ -74,8 +74,8 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   // Preview state for the Android Dynamic Island overlay when minimised while broadcasting
   const [dynamicIslandPreview, setDynamicIslandPreview] = useState<boolean>(false);
   const [dynamicIslandDebug, setDynamicIslandDebug] = useState<boolean>(false);
-  const islandHoldRef = useRef<number | null>(null);
-  const islandHoldFiredRef = useRef<boolean>(false);
+  const [islandOffsetY, setIslandOffsetY] = useState<number>(0);
+  const [islandHeightDelta, setIslandHeightDelta] = useState<number>(0);
 
   useEffect(() => {
     const updateClock = () => {
@@ -500,34 +500,8 @@ export const PaceController: React.FC<PaceControllerProps> = ({
       {/* Dynamic Island Live Overlay Preview (flanking either side of top front-facing camera island when minimised while broadcasting) */}
       {dynamicIslandPreview && isBroadcasting && (
         <aside
-          onPointerDown={() => {
-            islandHoldFiredRef.current = false;
-            if (islandHoldRef.current !== null) window.clearTimeout(islandHoldRef.current);
-            islandHoldRef.current = window.setTimeout(() => {
-              islandHoldFiredRef.current = true;
-              setDynamicIslandDebug((prev) => !prev);
-            }, 600);
-          }}
-          onPointerUp={() => {
-            if (islandHoldRef.current !== null) {
-              window.clearTimeout(islandHoldRef.current);
-              islandHoldRef.current = null;
-            }
-            if (!islandHoldFiredRef.current && !dynamicIslandDebug) {
-              setDynamicIslandPreview(false);
-            }
-          }}
-          onPointerCancel={() => {
-            if (islandHoldRef.current !== null) {
-              window.clearTimeout(islandHoldRef.current);
-              islandHoldRef.current = null;
-            }
-          }}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setDynamicIslandDebug((prev) => !prev);
-          }}
-          title="Dynamic Island Overlay (tap to return to full app, long-press for DisplayCutout debug)"
+          onClick={() => setDynamicIslandDebug((prev) => !prev)}
+          title="Dynamic Island Overlay (short press to toggle DisplayCutout & island position/height debug)"
           aria-label="Dynamic Island live broadcast speed overlay"
           className="fixed top-1.5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center select-none animate-fade-in"
         >
@@ -563,7 +537,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           {dynamicIslandDebug && (
             <div
               onClick={(e) => e.stopPropagation()}
-              className="mt-2 w-[310px] rounded-xl bg-[#111315]/95 border border-emerald-400 p-3 font-mono text-[11px] text-neutral-200 shadow-2xl space-y-1.5"
+              className="mt-2 w-[320px] rounded-xl bg-[#111315]/95 border border-emerald-400 p-3 font-mono text-[11px] text-neutral-200 shadow-2xl space-y-2"
             >
               <div className="flex items-center justify-between text-[#4ade80] font-bold text-xs">
                 <span>DYNAMIC ISLAND &amp; CUTOUT DEBUG</span>
@@ -582,9 +556,61 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   safeInsets: T=128px, B=0px, L=0px, R=0px
 
 DYNAMIC ISLAND OVERLAY:
-  top (y): 42 px (14.0 dp)
-  height:  68 px (22.7 dp)
-  bottom:  110 px (centerY=76 px)`}
+  top (y): ${42 + islandOffsetY} px (${((42 + islandOffsetY) / 3).toFixed(1)} dp) [nudgeY=${islandOffsetY}]
+  height:  ${66 + islandHeightDelta} px (${((66 + islandHeightDelta) / 3).toFixed(1)} dp) [nudgeH=${islandHeightDelta}]
+  bottom:  ${42 + islandOffsetY + 66 + islandHeightDelta} px (centerY=${Math.round(42 + islandOffsetY + (66 + islandHeightDelta) / 2)} px)`}
+              </div>
+              <div className="grid grid-cols-4 gap-1 pt-1">
+                <button
+                  onClick={() => setIslandOffsetY((y) => y - 1)}
+                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-[#4ade80] hover:border-emerald-400 cursor-pointer"
+                >
+                  Y -1px
+                </button>
+                <button
+                  onClick={() => setIslandOffsetY((y) => y + 1)}
+                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-[#4ade80] hover:border-emerald-400 cursor-pointer"
+                >
+                  Y +1px
+                </button>
+                <button
+                  onClick={() => setIslandHeightDelta((h) => h - 2)}
+                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-[#4ade80] hover:border-emerald-400 cursor-pointer"
+                >
+                  H -2px
+                </button>
+                <button
+                  onClick={() => setIslandHeightDelta((h) => h + 2)}
+                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-[#4ade80] hover:border-emerald-400 cursor-pointer"
+                >
+                  H +2px
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                <button
+                  onClick={() => {
+                    setIslandOffsetY(0);
+                    setIslandHeightDelta(0);
+                  }}
+                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-neutral-300 hover:text-white cursor-pointer"
+                >
+                  Reset
+                </button>
+                <button
+                  onClick={() => {
+                    setDynamicIslandDebug(false);
+                    setDynamicIslandPreview(false);
+                  }}
+                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-[#4ade80] hover:border-emerald-400 cursor-pointer"
+                >
+                  Open App
+                </button>
+                <button
+                  onClick={() => setDynamicIslandDebug(false)}
+                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-neutral-300 hover:text-white cursor-pointer"
+                >
+                  Close
+                </button>
               </div>
             </div>
           )}
@@ -826,6 +852,28 @@ DYNAMIC ISLAND OVERLAY:
           </button>
         </div>
       </section>
+
+      {/* Android System Gesture Navigation Bar (WindowInsets.Type.navigationBars() — swipe up to minimize / go home, swipe up & hold for Recent apps, swipe left/right to switch apps) */}
+      <footer
+        className="shrink-0 flex items-center justify-center pt-1 pb-0.5 select-none"
+        aria-label="Android gesture navigation bar"
+      >
+        <button
+          type="button"
+          onClick={() => setDynamicIslandPreview((prev) => !prev)}
+          title="Android Gesture Navigation Bar (WindowInsets.Type.navigationBars()): Swipe up to minimize & show Dynamic Island · Swipe up & hold for Overview · Swipe left/right to switch apps"
+          aria-label="Gesture navigation handle — tap or swipe up to toggle minimized Dynamic Island view"
+          className="group py-1 px-6 flex items-center justify-center cursor-pointer"
+        >
+          <span
+            className={`w-32 h-1 rounded-full transition-colors ${
+              dynamicIslandPreview && isBroadcasting
+                ? 'bg-emerald-400/80'
+                : 'bg-neutral-500/80 group-hover:bg-neutral-300'
+            }`}
+          />
+        </button>
+      </footer>
 
       {/* Preset Editor Modal */}
       {editingPresetIndex !== null && (
