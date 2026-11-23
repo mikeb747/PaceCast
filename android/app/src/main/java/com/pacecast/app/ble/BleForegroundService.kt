@@ -217,21 +217,13 @@ class BleForegroundService : Service() {
             !SpeedStateManager.isAppInForeground.value
     }
 
-    private fun resolveCameraCutoutRect(view: View? = dynamicIslandView): Rect? {
+    private fun resolveCameraCutoutRect(): Rect? {
         var found: Rect? = null
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val rootCutout = view?.rootWindowInsets?.displayCutout
-            val rect = rootCutout?.boundingRects?.filter { !it.isEmpty }?.minByOrNull { it.top }
-            if (rect != null) {
-                found = rect
-            }
-        }
-
-        if (found == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val metricsCutout = windowManager?.currentWindowMetrics?.windowInsets?.displayCutout
-            val rect = metricsCutout?.boundingRects?.filter { !it.isEmpty }?.minByOrNull { it.top }
-            if (rect != null) {
+            val rect = metricsCutout?.boundingRectTop
+            if (rect != null && !rect.isEmpty) {
                 found = rect
             }
         }
@@ -239,8 +231,8 @@ class BleForegroundService : Service() {
         if (found == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             @Suppress("DEPRECATION")
             val displayCutout = windowManager?.defaultDisplay?.cutout
-            val rect = displayCutout?.boundingRects?.filter { !it.isEmpty }?.minByOrNull { it.top }
-            if (rect != null) {
+            val rect = displayCutout?.boundingRectTop
+            if (rect != null && !rect.isEmpty) {
                 found = rect
             }
         }
@@ -253,6 +245,39 @@ class BleForegroundService : Service() {
         return SpeedStateManager.cameraCutoutRect.value
     }
 
+    /**
+     * Computes (pillHeightPx, spacerWidthPx, yOffsetPx) from DisplayCutout.boundingRectTop.
+     * Note: holeRect.top is always 0 (anchored to the screen edge), while holeRect.left,
+     * holeRect.right, and holeRect.bottom hug the physical punch-hole closely.
+     */
+    private fun computeIslandMetrics(holeRect: Rect?): Triple<Int, Int, Int> {
+        val holeWidth = holeRect?.width() ?: 0
+        // Island height is 75-85 pixels
+        val pillHeightPx = if (holeWidth > 0) {
+            (holeWidth + 10).coerceIn(75, 85)
+        } else {
+            80
+        }
+        val spacerWidthPx = if (holeWidth > 0) {
+            holeWidth + dpToPx(8)
+        } else {
+            dpToPx(34)
+        }
+
+        val physicalCenterY = if (holeRect != null && holeWidth > 0 && holeRect.bottom > 0) {
+            if (holeRect.top == 0 && holeRect.bottom > holeWidth) {
+                holeRect.bottom - (holeWidth / 2)
+            } else {
+                holeRect.centerY()
+            }
+        } else {
+            68
+        }
+
+        val targetY = (physicalCenterY - (pillHeightPx / 2)).coerceAtLeast(0)
+        return Triple(pillHeightPx, spacerWidthPx, targetY)
+    }
+
     private fun applyCutoutPositionAndSize() {
         val view = dynamicIslandView as? LinearLayout ?: return
         val leftWing = leftWingView ?: return
@@ -261,16 +286,23 @@ class BleForegroundService : Service() {
         val params = dynamicIslandLayoutParams ?: return
         val wm = windowManager ?: return
 
-        val cutoutRect = resolveCameraCutoutRect(view)
-        val targetPillHeight = if (cutoutRect != null) {
-            maxOf(cutoutRect.height() + dpToPx(4), dpToPx(28))
-        } else {
-            dpToPx(30)
+        val holeRect = resolveCameraCutoutRect()
+        val (targetPillHeight, targetSpacerWidth, targetY) = computeIslandMetrics(holeRect)
+
+        val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        leftWing.measure(unspecified, unspecified)
+        rightWing.measure(unspecified, unspecified)
+        val wingWidth = maxOf(leftWing.measuredWidth, rightWing.measuredWidth)
+
+        val leftLp = leftWing.layoutParams as? LinearLayout.LayoutParams
+        if (leftLp != null && leftLp.width != wingWidth) {
+            leftLp.width = wingWidth
+            leftWing.layoutParams = leftLp
         }
-        val targetSpacerWidth = if (cutoutRect != null) {
-            maxOf(cutoutRect.width() + dpToPx(10), dpToPx(32))
-        } else {
-            dpToPx(34)
+        val rightLp = rightWing.layoutParams as? LinearLayout.LayoutParams
+        if (rightLp != null && rightLp.width != wingWidth) {
+            rightLp.width = wingWidth
+            rightWing.layoutParams = rightLp
         }
 
         val spacerLp = spacer.layoutParams as? LinearLayout.LayoutParams
@@ -284,29 +316,8 @@ class BleForegroundService : Service() {
         }
         (view.background as? GradientDrawable)?.cornerRadius = targetPillHeight / 2f
 
-        val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        leftWing.measure(unspecified, unspecified)
-        rightWing.measure(unspecified, unspecified)
-        val leftW = leftWing.measuredWidth
-        val rightW = rightWing.measuredWidth
-
-        val screenWidth = getScreenWidthPx()
-        val cutoutOffsetFromCenter = if (cutoutRect != null && screenWidth > 0) {
-            cutoutRect.centerX() - (screenWidth / 2)
-        } else {
-            0
-        }
-
-        // Deterministic, idempotent coordinates (never cumulative +=)
-        val targetX = cutoutOffsetFromCenter + ((rightW - leftW) / 2)
-        val targetY = if (cutoutRect != null) {
-            (cutoutRect.centerY() - (targetPillHeight / 2)).coerceAtLeast(0)
-        } else {
-            dpToPx(8)
-        }
-
-        if (params.x != targetX || params.y != targetY || params.height != targetPillHeight) {
-            params.x = targetX
+        if (params.x != 0 || params.y != targetY || params.height != targetPillHeight) {
+            params.x = 0
             params.y = targetY
             params.height = targetPillHeight
             if (view.isAttachedToWindow) {
@@ -351,17 +362,8 @@ class BleForegroundService : Service() {
         val wm = windowManager ?: return
         if (dynamicIslandView != null) return
 
-        val cutoutRect = resolveCameraCutoutRect(null)
-        val initialPillHeight = if (cutoutRect != null) {
-            maxOf(cutoutRect.height() + dpToPx(4), dpToPx(28))
-        } else {
-            dpToPx(30)
-        }
-        val initialSpacerWidth = if (cutoutRect != null) {
-            maxOf(cutoutRect.width() + dpToPx(10), dpToPx(32))
-        } else {
-            dpToPx(34)
-        }
+        val holeRect = resolveCameraCutoutRect()
+        val (initialPillHeight, initialSpacerWidth, initialY) = computeIslandMetrics(holeRect)
 
         // Outer pill container that wraps tightly around the text flanking the top camera island (no green outline)
         val container = LinearLayout(this).apply {
@@ -374,18 +376,6 @@ class BleForegroundService : Service() {
                 cornerRadius = initialPillHeight / 2f
                 setColor(Color.parseColor("#000000"))
             }
-            setOnApplyWindowInsetsListener { _, insets ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    val topRect = insets.displayCutout?.boundingRects
-                        ?.filter { !it.isEmpty }
-                        ?.minByOrNull { it.top }
-                    if (topRect != null) {
-                        SpeedStateManager.updateCameraCutoutRect(topRect, this@BleForegroundService)
-                        applyCutoutPositionAndSize()
-                    }
-                }
-                insets
-            }
             setOnClickListener {
                 // Tap Dynamic Island to return to PaceCast
                 val openIntent = Intent(this@BleForegroundService, MainActivity::class.java).apply {
@@ -397,10 +387,10 @@ class BleForegroundService : Service() {
             }
         }
 
-        // Left Wing (to the left of the front-facing camera cutout): Speed + Unit (tight WRAP_CONTENT, no dot)
+        // Left Wing (to the left of the front-facing camera cutout): Speed + Unit (aligned next to camera hole, no dot)
         val leftWing = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -429,10 +419,10 @@ class BleForegroundService : Service() {
             layoutParams = LinearLayout.LayoutParams(initialSpacerWidth, initialPillHeight)
         }
 
-        // Right Wing (to the right of the front-facing camera cutout): Live Pace + Unit (tight WRAP_CONTENT)
+        // Right Wing (to the right of the front-facing camera cutout): Live Pace + Unit (aligned next to camera hole)
         val rightWing = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -465,12 +455,6 @@ class BleForegroundService : Service() {
         } else {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
-        }
-
-        val initialY = if (cutoutRect != null) {
-            (cutoutRect.centerY() - (initialPillHeight / 2)).coerceAtLeast(0)
-        } else {
-            dpToPx(8)
         }
 
         val params = WindowManager.LayoutParams(

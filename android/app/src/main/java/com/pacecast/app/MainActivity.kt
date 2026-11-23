@@ -131,26 +131,34 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setupDisplayCutoutObserver() {
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
-            val cutout = insets.displayCutout
-            val topRect = cutout?.boundingRects
-                ?.filter { !it.isEmpty }
-                ?.minByOrNull { it.top }
-            if (topRect != null) {
-                SpeedStateManager.updateCameraCutoutRect(topRect, this)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, windowInsets ->
+            val cutout = windowInsets.displayCutout
+            if (cutout != null) {
+                val holeRect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    cutout.boundingRectTop
+                } else {
+                    cutout.boundingRects.filter { !it.isEmpty }.minByOrNull { it.top }
+                }
+                if (holeRect != null && !holeRect.isEmpty) {
+                    SpeedStateManager.updateCameraCutoutRect(holeRect, this)
+                }
             }
-            androidx.core.view.ViewCompat.onApplyWindowInsets(view, insets)
+            androidx.core.view.ViewCompat.onApplyWindowInsets(view, windowInsets)
         }
     }
 
     private fun captureDisplayCutout() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val cutout = window.decorView.rootWindowInsets?.displayCutout
-            val topRect = cutout?.boundingRects
-                ?.filter { !it.isEmpty }
-                ?.minByOrNull { it.top }
-            if (topRect != null) {
-                SpeedStateManager.updateCameraCutoutRect(topRect, this)
+            if (cutout != null) {
+                val holeRect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    cutout.boundingRectTop
+                } else {
+                    cutout.boundingRects.filter { !it.isEmpty }.minByOrNull { it.top }
+                }
+                if (holeRect != null && !holeRect.isEmpty) {
+                    SpeedStateManager.updateCameraCutoutRect(holeRect, this)
+                }
             }
         }
     }
