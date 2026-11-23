@@ -199,6 +199,11 @@ class BleForegroundService : Service() {
                 }
             }
             launch {
+                SpeedStateManager.cameraCutoutPathBounds.collect {
+                    applyCutoutPositionAndSize()
+                }
+            }
+            launch {
                 SpeedStateManager.isIslandDebugEnabled.collect {
                     updateNotification()
                     updateDynamicIslandOverlay()
@@ -289,6 +294,16 @@ class BleForegroundService : Service() {
         return SpeedStateManager.cameraCutoutRect.value
     }
 
+    private fun resolveCameraCutoutPathBounds(): Rect? {
+        val sysCutout = resolveSystemDisplayCutout()
+        val pathBounds = DynamicIslandGeometry.extractCutoutPathBounds(sysCutout)
+        if (pathBounds != null) {
+            SpeedStateManager.updateCameraCutoutPathBounds(pathBounds, this)
+            return pathBounds
+        }
+        return SpeedStateManager.cameraCutoutPathBounds.value
+    }
+
     private fun getUserYDeltaPx(): Int {
         return SpeedStateManager.islandYDeltaPx.value
     }
@@ -304,39 +319,19 @@ class BleForegroundService : Service() {
     }
 
     /**
-     * Computes (pillHeightPx, spacerWidthPx, yOffsetPx) from DisplayCutout boundingRects.
-     * - Top edge stays at baseTargetY - 9px (hiding the top of the camera circle).
-     * - Default height reduction is 14px instead of 24px (+10px taller at the bottom so the
-     *   bottom edge covers the bottom of the camera circle while top edge stays fixed).
+     * Computes density-independent Dynamic Island geometry from DisplayCutout metrics.
      */
-    private fun computeIslandMetrics(holeRect: Rect?): Triple<Int, Int, Int> {
-        val holeWidth = holeRect?.width() ?: 0
-        val basePillHeightPx = if (holeWidth > 0) {
-            (holeWidth + 10).coerceIn(75, 85)
-        } else {
-            80
-        }
-        val pillHeightPx = (basePillHeightPx - 14 + getUserHeightDeltaPx()).coerceIn(40, 140)
-
-        val spacerWidthPx = if (holeWidth > 0) {
-            maxOf(holeWidth - dpToPx(2), dpToPx(26))
-        } else {
-            dpToPx(28)
-        }
-
-        val physicalCenterY = if (holeRect != null && holeWidth > 0 && holeRect.bottom > 0) {
-            if (holeRect.top == 0 && holeRect.bottom > holeWidth) {
-                holeRect.bottom - (holeWidth / 2)
-            } else {
-                holeRect.centerY()
-            }
-        } else {
-            68
-        }
-
-        val baseTargetY = physicalCenterY - (basePillHeightPx / 2)
-        val targetY = (baseTargetY - 9 + getUserYDeltaPx()).coerceAtLeast(0)
-        return Triple(pillHeightPx, spacerWidthPx, targetY)
+    private fun computeIslandMetrics(
+        holeRect: Rect?,
+        cutoutPathBounds: Rect? = resolveCameraCutoutPathBounds()
+    ): DynamicIslandMetrics {
+        return DynamicIslandGeometry.compute(
+            holeRect = holeRect,
+            cutoutPathBounds = cutoutPathBounds,
+            density = resources.displayMetrics.density,
+            userYDeltaPx = getUserYDeltaPx(),
+            userHeightDeltaPx = getUserHeightDeltaPx()
+        )
     }
 
     private fun computeTouchWrapperHeight(targetY: Int, targetPillHeight: Int, holeRect: Rect?): Int {
@@ -382,7 +377,11 @@ class BleForegroundService : Service() {
         val wm = windowManager ?: return
 
         val holeRect = resolveCameraCutoutRect()
-        val (targetPillHeight, targetSpacerWidth, targetY) = computeIslandMetrics(holeRect)
+        val pathBounds = resolveCameraCutoutPathBounds()
+        val metrics = computeIslandMetrics(holeRect, pathBounds)
+        val targetPillHeight = metrics.pillHeightPx
+        val targetSpacerWidth = metrics.spacerWidthPx
+        val targetY = metrics.targetY
         val touchWrapperHeight = computeTouchWrapperHeight(targetY, targetPillHeight, holeRect)
 
         val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
@@ -433,8 +432,12 @@ class BleForegroundService : Service() {
 
     private fun buildDebugInfoString(): String {
         val holeRect = resolveCameraCutoutRect()
+        val pathBounds = resolveCameraCutoutPathBounds()
         val sysCutout = resolveSystemDisplayCutout()
-        val (pillHeightPx, spacerWidthPx, targetY) = computeIslandMetrics(holeRect)
+        val metrics = computeIslandMetrics(holeRect, pathBounds)
+        val pillHeightPx = metrics.pillHeightPx
+        val spacerWidthPx = metrics.spacerWidthPx
+        val targetY = metrics.targetY
 
         val leftW = leftWingView?.layoutParams?.width ?: leftWingView?.measuredWidth ?: 0
         val totalWidth = (dpToPx(8) * 2) + (leftW * 2) + spacerWidthPx
@@ -446,9 +449,15 @@ class BleForegroundService : Service() {
         val cutoutRectStr = if (holeRect != null) {
             "L=${holeRect.left}, T=${holeRect.top}, R=${holeRect.right}, B=${holeRect.bottom}\n" +
                 "  size=${holeRect.width()}x${holeRect.height()}px, center=(${holeRect.centerX()}, ${holeRect.centerY()})\n" +
-                "  estLensTop=${holeRect.bottom - holeRect.width()}px, estLensCenterY=${holeRect.bottom - holeRect.width() / 2}px"
+                "  estLensTop=${metrics.estLensTopPx ?: (holeRect.bottom - holeRect.width())}px, estLensCenterY=${metrics.estLensCenterYPx ?: (holeRect.bottom - holeRect.width() / 2)}px"
         } else {
             "null (fallback used)"
+        }
+
+        val pathStr = if (pathBounds != null) {
+            "L=${pathBounds.left}, T=${pathBounds.top}, R=${pathBounds.right}, B=${pathBounds.bottom} (${pathBounds.width()}x${pathBounds.height()}px)"
+        } else {
+            "N/A"
         }
 
         val safeInsetsStr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
@@ -466,9 +475,10 @@ class BleForegroundService : Service() {
         return buildString {
             append("DISPLAY CUTOUT (rects=$allRectsCount):\n")
             append("  $cutoutRectStr\n")
+            append("  pathBounds: $pathStr\n")
             append("  safeInsets: $safeInsetsStr\n")
             append("  screen: ${screenW}x${screenH}px (${String.format(Locale.US, "%.2f", density)}x)\n\n")
-            append("DYNAMIC ISLAND OVERLAY:\n")
+            append("DYNAMIC ISLAND OVERLAY [${metrics.mode.label}]:\n")
             append("  top (y): $targetY px (${pxToDpStr(targetY)} dp) [adj=${getUserYDeltaPx()}px]\n")
             append("  height:  $pillHeightPx px (${pxToDpStr(pillHeightPx)} dp) [adj=${getUserHeightDeltaPx()}px]\n")
             append("  bottom:  ${targetY + pillHeightPx} px (centerY=${targetY + pillHeightPx / 2} px)\n")
@@ -520,7 +530,9 @@ class BleForegroundService : Service() {
         if (debugOverlayView != null) return
 
         val holeRect = resolveCameraCutoutRect()
-        val (pillHeightPx, _, targetY) = computeIslandMetrics(holeRect)
+        val metrics = computeIslandMetrics(holeRect)
+        val pillHeightPx = metrics.pillHeightPx
+        val targetY = metrics.targetY
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -625,6 +637,13 @@ class BleForegroundService : Service() {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             x = 0
             y = safeDebugY
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
 
         try {
@@ -688,7 +707,10 @@ class BleForegroundService : Service() {
         if (dynamicIslandView != null) return
 
         val holeRect = resolveCameraCutoutRect()
-        val (initialPillHeight, initialSpacerWidth, initialY) = computeIslandMetrics(holeRect)
+        val metrics = computeIslandMetrics(holeRect)
+        val initialPillHeight = metrics.pillHeightPx
+        val initialSpacerWidth = metrics.spacerWidthPx
+        val initialY = metrics.targetY
         val initialTouchWrapperHeight = computeTouchWrapperHeight(initialY, initialPillHeight, holeRect)
 
         // Visible black pill container that wraps tightly around the text flanking the top camera island (no green outline)

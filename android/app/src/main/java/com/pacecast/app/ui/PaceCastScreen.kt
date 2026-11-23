@@ -777,6 +777,7 @@ private fun IslandCutoutDebugCard(
     val context = LocalContext.current
     val view = LocalView.current
     val cutoutRect by com.pacecast.app.ble.SpeedStateManager.cameraCutoutRect.collectAsState()
+    val cutoutPathBounds by com.pacecast.app.ble.SpeedStateManager.cameraCutoutPathBounds.collectAsState()
     val userYDelta by com.pacecast.app.ble.SpeedStateManager.islandYDeltaPx.collectAsState()
     val userHDelta by com.pacecast.app.ble.SpeedStateManager.islandHeightDeltaPx.collectAsState()
 
@@ -796,20 +797,22 @@ private fun IslandCutoutDebugCard(
         }
     }
 
-    val holeWidth = activeRect?.width() ?: 0
-    val basePillHeightPx = if (holeWidth > 0) (holeWidth + 10).coerceIn(75, 85) else 80
-    val pillHeightPx = (basePillHeightPx - 14 + userHDelta).coerceIn(40, 140)
-    val physicalCenterY = if (activeRect != null && holeWidth > 0 && activeRect.bottom > 0) {
-        if (activeRect.top == 0 && activeRect.bottom > holeWidth) {
-            activeRect.bottom - (holeWidth / 2)
-        } else {
-            activeRect.centerY()
-        }
-    } else {
-        68
+    val activePathBounds = remember(cutoutPathBounds, sysCutout) {
+        com.pacecast.app.ble.DynamicIslandGeometry.extractCutoutPathBounds(sysCutout) ?: cutoutPathBounds
     }
-    val baseTargetY = physicalCenterY - (basePillHeightPx / 2)
-    val targetY = (baseTargetY - 9 + userYDelta).coerceAtLeast(0)
+
+    val metrics = remember(activeRect, activePathBounds, density, userYDelta, userHDelta) {
+        com.pacecast.app.ble.DynamicIslandGeometry.compute(
+            holeRect = activeRect,
+            cutoutPathBounds = activePathBounds,
+            density = density,
+            userYDeltaPx = userYDelta,
+            userHeightDeltaPx = userHDelta
+        )
+    }
+
+    val pillHeightPx = metrics.pillHeightPx
+    val targetY = metrics.targetY
 
     val safeInsetsStr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
         "T=${sysCutout.safeInsetTop}px, B=${sysCutout.safeInsetBottom}px, L=${sysCutout.safeInsetLeft}px, R=${sysCutout.safeInsetRight}px"
@@ -819,10 +822,16 @@ private fun IslandCutoutDebugCard(
 
     val rectStr = if (activeRect != null) {
         "L=${activeRect.left}, T=${activeRect.top}, R=${activeRect.right}, B=${activeRect.bottom}\n" +
-            "size=${activeRect.width()}x${activeRect.height()}px, center=(${activeRect.centerX()}, ${activeRect.centerY()})\n" +
-            "estLensTop=${activeRect.bottom - activeRect.width()}px, estLensCenterY=$physicalCenterY px"
+            "  size=${activeRect.width()}x${activeRect.height()}px, center=(${activeRect.centerX()}, ${activeRect.centerY()})\n" +
+            "  estLensTop=${metrics.estLensTopPx ?: (activeRect.bottom - activeRect.width())}px, estLensCenterY=${metrics.estLensCenterYPx ?: (activeRect.bottom - activeRect.width() / 2)}px"
     } else {
         "null (fallback used)"
+    }
+
+    val pathStr = if (activePathBounds != null) {
+        "L=${activePathBounds.left}, T=${activePathBounds.top}, R=${activePathBounds.right}, B=${activePathBounds.bottom} (${activePathBounds.width()}x${activePathBounds.height()}px)"
+    } else {
+        "N/A"
     }
 
     Column(
@@ -861,9 +870,10 @@ private fun IslandCutoutDebugCard(
             text = buildString {
                 append("DISPLAY CUTOUT:\n")
                 append("  $rectStr\n")
+                append("  pathBounds: $pathStr\n")
                 append("  safeInsets: $safeInsetsStr\n")
                 append("  screen: ${dm.widthPixels}x${dm.heightPixels}px (${String.format(Locale.US, "%.2f", density)}x)\n")
-                append("DYNAMIC ISLAND OVERLAY:\n")
+                append("DYNAMIC ISLAND OVERLAY [${metrics.mode.label}]:\n")
                 append("  top (y): $targetY px (${String.format(Locale.US, "%.1f", targetY / density)} dp) [adj=${userYDelta}px]\n")
                 append("  height:  $pillHeightPx px (${String.format(Locale.US, "%.1f", pillHeightPx / density)} dp) [adj=${userHDelta}px]\n")
                 append("  bottom:  ${targetY + pillHeightPx} px (centerY=${targetY + pillHeightPx / 2} px)")

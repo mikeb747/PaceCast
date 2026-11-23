@@ -16,6 +16,10 @@ object SpeedStateManager {
     private const val KEY_CUTOUT_TOP = "cutout_top"
     private const val KEY_CUTOUT_RIGHT = "cutout_right"
     private const val KEY_CUTOUT_BOTTOM = "cutout_bottom"
+    private const val KEY_CUTOUT_PATH_LEFT = "cutout_path_left"
+    private const val KEY_CUTOUT_PATH_TOP = "cutout_path_top"
+    private const val KEY_CUTOUT_PATH_RIGHT = "cutout_path_right"
+    private const val KEY_CUTOUT_PATH_BOTTOM = "cutout_path_bottom"
     private const val KEY_ISLAND_Y_DELTA = "island_user_y_delta_px"
     private const val KEY_ISLAND_H_DELTA = "island_user_h_delta_px"
 
@@ -42,6 +46,9 @@ object SpeedStateManager {
 
     private val _cameraCutoutRect = MutableStateFlow<Rect?>(null)
     val cameraCutoutRect: StateFlow<Rect?> = _cameraCutoutRect.asStateFlow()
+
+    private val _cameraCutoutPathBounds = MutableStateFlow<Rect?>(null)
+    val cameraCutoutPathBounds: StateFlow<Rect?> = _cameraCutoutPathBounds.asStateFlow()
 
     private val _isIslandDebugEnabled = MutableStateFlow(false)
     val isIslandDebugEnabled: StateFlow<Boolean> = _isIslandDebugEnabled.asStateFlow()
@@ -104,6 +111,19 @@ object SpeedStateManager {
         }
     }
 
+    fun updateCameraCutoutPathBounds(rect: Rect, context: Context? = null) {
+        if (rect.isEmpty) return
+        if (_cameraCutoutPathBounds.value == rect) return
+        _cameraCutoutPathBounds.value = Rect(rect)
+        context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit()?.apply {
+            putInt(KEY_CUTOUT_PATH_LEFT, rect.left)
+            putInt(KEY_CUTOUT_PATH_TOP, rect.top)
+            putInt(KEY_CUTOUT_PATH_RIGHT, rect.right)
+            putInt(KEY_CUTOUT_PATH_BOTTOM, rect.bottom)
+            apply()
+        }
+    }
+
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         _currentSpeed.value = prefs.getFloat(KEY_CURRENT_SPEED, 16.8f)
@@ -117,6 +137,13 @@ object SpeedStateManager {
         val bottom = prefs.getInt(KEY_CUTOUT_BOTTOM, -1)
         if (left >= 0 && top >= 0 && right > left && bottom > top) {
             _cameraCutoutRect.value = Rect(left, top, right, bottom)
+        }
+        val pathLeft = prefs.getInt(KEY_CUTOUT_PATH_LEFT, -1)
+        val pathTop = prefs.getInt(KEY_CUTOUT_PATH_TOP, -1)
+        val pathRight = prefs.getInt(KEY_CUTOUT_PATH_RIGHT, -1)
+        val pathBottom = prefs.getInt(KEY_CUTOUT_PATH_BOTTOM, -1)
+        if (pathLeft >= 0 && pathTop >= 0 && pathRight > pathLeft && pathBottom > pathTop) {
+            _cameraCutoutPathBounds.value = Rect(pathLeft, pathTop, pathRight, pathBottom)
         }
     }
 

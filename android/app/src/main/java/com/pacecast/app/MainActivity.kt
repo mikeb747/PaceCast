@@ -83,7 +83,10 @@ class MainActivity : ComponentActivity() {
         // Keep Screen Awake on the treadmill console
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
@@ -139,6 +142,12 @@ class MainActivity : ComponentActivity() {
             if (holeRect != null) {
                 SpeedStateManager.updateCameraCutoutRect(holeRect, this)
             }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val nativeCutout = window.decorView.rootWindowInsets?.displayCutout
+                com.pacecast.app.ble.DynamicIslandGeometry.extractCutoutPathBounds(nativeCutout)?.let { pathBounds ->
+                    SpeedStateManager.updateCameraCutoutPathBounds(pathBounds, this)
+                }
+            }
             androidx.core.view.ViewCompat.onApplyWindowInsets(view, windowInsets)
         }
     }
@@ -151,6 +160,9 @@ class MainActivity : ComponentActivity() {
                 ?.minByOrNull { it.top }
             if (holeRect != null) {
                 SpeedStateManager.updateCameraCutoutRect(holeRect, this)
+            }
+            com.pacecast.app.ble.DynamicIslandGeometry.extractCutoutPathBounds(cutout)?.let { pathBounds ->
+                SpeedStateManager.updateCameraCutoutPathBounds(pathBounds, this)
             }
         }
     }

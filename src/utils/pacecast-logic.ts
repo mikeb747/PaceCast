@@ -161,3 +161,150 @@ export class PaceTransitionManager {
     return { current: this.currentSpeed, previous: this.previousSpeed };
   }
 }
+
+export interface CutoutRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export type IslandLayoutMode =
+  | 'cutout-path'
+  | 'floating-rect'
+  | 'tight-cutout'
+  | 'tall-cutout'
+  | 'fallback';
+
+export interface DynamicIslandMetrics {
+  pillHeightPx: number;
+  spacerWidthPx: number;
+  targetY: number;
+  bottomPx: number;
+  centerYPx: number;
+  mode: IslandLayoutMode;
+  estLensTopPx: number | null;
+  estLensCenterYPx: number | null;
+}
+
+/**
+ * Mirrors Android's DynamicIslandGeometry.compute(...) for fast deterministic verification
+ * across device cutouts (Xiaomi/MIUI, Google Pixel, Samsung, OnePlus, floating cutoutPath, etc.).
+ */
+export function computeDynamicIslandMetrics(params: {
+  holeRect: CutoutRect | null;
+  cutoutPathBounds?: CutoutRect | null;
+  density: number;
+  userYDeltaPx?: number;
+  userHeightDeltaPx?: number;
+}): DynamicIslandMetrics {
+  const {
+    holeRect,
+    cutoutPathBounds = null,
+    density,
+    userYDeltaPx = 0,
+    userHeightDeltaPx = 0,
+  } = params;
+
+  const safeDensity = Math.max(density, 1);
+  const dpToPx = (dp: number) => Math.round(dp * safeDensity);
+  const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
+
+  const MIN_VISUAL_HEIGHT_DP = 31.5;
+  const MIN_PILL_HEIGHT_DP = 20;
+  const MAX_PILL_HEIGHT_DP = 64;
+  const MIN_TOP_MARGIN_DP = 3;
+  const PATH_VERTICAL_PAD_DP = 2;
+  const TIGHT_BOTTOM_PAD_DP = 2;
+  const TALL_CUTOUT_THRESHOLD_DP = 42;
+
+  const minVisualHeightPx = dpToPx(MIN_VISUAL_HEIGHT_DP);
+  const minPillHeightPx = dpToPx(MIN_PILL_HEIGHT_DP);
+  const maxPillHeightPx = dpToPx(MAX_PILL_HEIGHT_DP);
+  const minTopMarginPx = dpToPx(MIN_TOP_MARGIN_DP);
+
+  const rectWidth = (r: CutoutRect | null) => (r ? r.right - r.left : 0);
+  const rectHeight = (r: CutoutRect | null) => (r ? r.bottom - r.top : 0);
+
+  const holeWidth = rectWidth(holeRect) || rectWidth(cutoutPathBounds);
+  const spacerWidthPx =
+    holeWidth > 0 ? Math.max(holeWidth - dpToPx(2), dpToPx(26)) : dpToPx(28);
+
+  const pathW = rectWidth(cutoutPathBounds);
+  const pathH = rectHeight(cutoutPathBounds);
+  const hasFloatingPathHole =
+    cutoutPathBounds !== null &&
+    cutoutPathBounds.top >= dpToPx(2) &&
+    pathH >= dpToPx(10) &&
+    pathH <= dpToPx(44) &&
+    pathW >= dpToPx(10) &&
+    pathW <= dpToPx(80) &&
+    (holeRect === null || cutoutPathBounds.bottom <= holeRect.bottom + dpToPx(4));
+
+  let basePillHeightPx: number;
+  let baseTopY: number;
+  let mode: IslandLayoutMode;
+  let estLensTopPx: number | null;
+  let estLensCenterYPx: number | null;
+
+  if (hasFloatingPathHole && cutoutPathBounds !== null) {
+    const padPx = dpToPx(PATH_VERTICAL_PAD_DP);
+    const lensCenterY = (cutoutPathBounds.top + cutoutPathBounds.bottom) / 2;
+    basePillHeightPx = Math.max(minVisualHeightPx, pathH + padPx * 2);
+    baseTopY = Math.max(Math.round(lensCenterY - basePillHeightPx / 2), minTopMarginPx);
+    mode = 'cutout-path';
+    estLensTopPx = cutoutPathBounds.top;
+    estLensCenterYPx = Math.round(lensCenterY);
+  } else if (holeRect !== null && holeRect.top > 0 && holeRect.bottom > holeRect.top) {
+    const padPx = dpToPx(PATH_VERTICAL_PAD_DP);
+    const lensCenterY = (holeRect.top + holeRect.bottom) / 2;
+    basePillHeightPx = Math.max(minVisualHeightPx, rectHeight(holeRect) + padPx * 2);
+    baseTopY = Math.max(Math.round(lensCenterY - basePillHeightPx / 2), minTopMarginPx);
+    mode = 'floating-rect';
+    estLensTopPx = holeRect.top;
+    estLensCenterYPx = Math.round(lensCenterY);
+  } else if (holeRect !== null && holeRect.bottom > 0 && rectWidth(holeRect) > 0) {
+    const w = rectWidth(holeRect);
+    const bottomDp = holeRect.bottom / safeDensity;
+    const computedEstLensTop = Math.max(0, holeRect.bottom - w);
+    const computedEstLensCenterY = holeRect.bottom - Math.trunc(w / 2);
+    estLensTopPx = computedEstLensTop;
+    estLensCenterYPx = computedEstLensCenterY;
+
+    if (bottomDp > TALL_CUTOUT_THRESHOLD_DP) {
+      basePillHeightPx = minVisualHeightPx;
+      const centerY = (holeRect.top + holeRect.bottom) >> 1;
+      baseTopY = Math.max(centerY - Math.trunc(basePillHeightPx / 2), minTopMarginPx);
+      mode = 'tall-cutout';
+    } else {
+      const bottomPadPx = dpToPx(TIGHT_BOTTOM_PAD_DP);
+      const topPadPx = dpToPx(PATH_VERTICAL_PAD_DP);
+      const desiredBottom = holeRect.bottom + bottomPadPx;
+      const desiredTopCap = Math.max(computedEstLensTop - topPadPx, minTopMarginPx);
+      const neededHeight = desiredBottom - desiredTopCap;
+      basePillHeightPx = Math.max(minVisualHeightPx, neededHeight);
+      baseTopY = Math.max(desiredBottom - basePillHeightPx, minTopMarginPx);
+      mode = 'tight-cutout';
+    }
+  } else {
+    basePillHeightPx = minVisualHeightPx;
+    baseTopY = dpToPx(6);
+    mode = 'fallback';
+    estLensTopPx = null;
+    estLensCenterYPx = null;
+  }
+
+  const pillHeightPx = clamp(basePillHeightPx + userHeightDeltaPx, minPillHeightPx, maxPillHeightPx);
+  const targetY = Math.max(baseTopY + userYDeltaPx, 0);
+
+  return {
+    pillHeightPx,
+    spacerWidthPx,
+    targetY,
+    bottomPx: targetY + pillHeightPx,
+    centerYPx: targetY + Math.trunc(pillHeightPx / 2),
+    mode,
+    estLensTopPx,
+    estLensCenterYPx,
+  };
+}
