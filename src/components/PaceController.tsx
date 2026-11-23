@@ -500,31 +500,32 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           onClick={() => setDynamicIslandPreview(false)}
           title="Dynamic Island Overlay (tap to return to full app)"
           aria-label="Dynamic Island live broadcast speed overlay"
-          className="fixed top-1.5 left-1/2 -translate-x-1/2 z-50 flex items-center bg-[#08090a] border border-emerald-400/55 rounded-full px-3 py-1 shadow-[0_4px_20px_rgba(0,0,0,0.85),0_0_14px_rgba(74,222,128,0.22)] cursor-pointer select-none animate-fade-in"
+          className="fixed top-1.5 left-1/2 -translate-x-1/2 z-50 flex items-center bg-black rounded-full px-2 py-1 shadow-[0_4px_20px_rgba(0,0,0,0.85)] cursor-pointer select-none animate-fade-in"
         >
-          {/* Left side of front camera island: Live broadcasting dot + Speed */}
-          <div className="flex items-center gap-1.5 pr-1">
-            <span className="w-2 h-2 rounded-full bg-[#4ade80] animate-pulse-dot shrink-0" />
-            <span className="font-mono text-xs sm:text-[13px] font-black text-white tracking-tight whitespace-nowrap">
-              {unitSystem === 'metric'
-                ? `${speed.toFixed(1)} km/h`
-                : `${kmhToMph(speed).toFixed(1)} mph`}
+          {/* Left side of front camera island: Speed (no dot) */}
+          <div className="flex items-baseline whitespace-nowrap font-mono">
+            <span className="text-xs sm:text-[13.5px] font-black text-[#4ade80] tracking-tight">
+              {unitSystem === 'metric' ? speed.toFixed(1) : kmhToMph(speed).toFixed(1)}
+            </span>
+            <span className="text-[10px] font-bold text-neutral-300 ml-0.5">
+              {unitSystem === 'metric' ? 'km/h' : 'mph'}
             </span>
           </div>
 
           {/* Center front-facing camera island cutout */}
-          <div className="w-9 flex items-center justify-center shrink-0">
+          <div className="w-8 flex items-center justify-center shrink-0">
             <span className="w-4 h-4 rounded-full bg-black border border-neutral-800 shadow-inner flex items-center justify-center">
               <span className="w-1.5 h-1.5 rounded-full bg-[#16202a]" />
             </span>
           </div>
 
           {/* Right side of front camera island: Live Pace */}
-          <div className="flex items-center pl-1">
-            <span className="font-mono text-xs sm:text-[13px] font-black text-[#4ade80] tracking-tight whitespace-nowrap">
-              {unitSystem === 'metric'
-                ? `${formatPace(speed)} /km`
-                : `${formatPaceMile(speed)} /mi`}
+          <div className="flex items-baseline whitespace-nowrap font-mono">
+            <span className="text-xs sm:text-[13.5px] font-black text-white tracking-tight">
+              {unitSystem === 'metric' ? formatPace(speed) : formatPaceMile(speed)}
+            </span>
+            <span className="text-[10px] font-bold text-neutral-300 ml-0.5">
+              {unitSystem === 'metric' ? '/km' : '/mi'}
             </span>
           </div>
         </aside>

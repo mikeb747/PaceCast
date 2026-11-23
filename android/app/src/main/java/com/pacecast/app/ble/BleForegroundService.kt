@@ -85,6 +85,7 @@ class BleForegroundService : Service() {
     private var leftSpeedTextView: TextView? = null
     private var leftUnitTextView: TextView? = null
     private var rightPaceTextView: TextView? = null
+    private var rightPaceUnitTextView: TextView? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -210,13 +211,15 @@ class BleForegroundService : Service() {
             val pace = calculatePace(currentSpeed, isMetric = true)
             leftSpeedTextView?.text = String.format(Locale.US, "%.1f", currentSpeed)
             leftUnitTextView?.text = " km/h"
-            rightPaceTextView?.text = "$pace /km"
+            rightPaceTextView?.text = pace
+            rightPaceUnitTextView?.text = " /km"
         } else {
             val mphSpeed = currentSpeed * 0.621371f
             val pace = calculatePace(currentSpeed, isMetric = false)
             leftSpeedTextView?.text = String.format(Locale.US, "%.1f", mphSpeed)
             leftUnitTextView?.text = " mph"
-            rightPaceTextView?.text = "$pace /mi"
+            rightPaceTextView?.text = pace
+            rightPaceUnitTextView?.text = " /mi"
         }
     }
 
@@ -224,16 +227,15 @@ class BleForegroundService : Service() {
         val wm = windowManager ?: return
         if (dynamicIslandView != null) return
 
-        // Outer pill container that wraps around the top front-facing camera island
+        // Outer pill container that wraps tightly around the text flanking the top camera island (no green outline)
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dpToPx(12), dpToPx(5), dpToPx(12), dpToPx(5))
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dpToPx(24).toFloat()
+                cornerRadius = dpToPx(20).toFloat()
                 setColor(Color.parseColor("#000000"))
-                setStroke(dpToPx(1), Color.parseColor("#664ADE80"))
             }
             setOnClickListener {
                 // Tap Dynamic Island to return to PaceCast
@@ -246,29 +248,19 @@ class BleForegroundService : Service() {
             }
         }
 
-        // Left Wing (to the left of the front-facing camera cutout): Pulsing green dot + Speed
+        // Left Wing (to the left of the front-facing camera cutout): Speed + Unit (tight WRAP_CONTENT, no dot)
         val leftWing = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(86),
+                LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
 
-        val statusDot = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(7), dpToPx(7)).apply {
-                marginEnd = dpToPx(5)
-            }
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#4ADE80"))
-            }
-        }
-
         val speedTv = TextView(this).apply {
             setTextColor(Color.parseColor("#4ADE80"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             setSingleLine(true)
         }
@@ -280,33 +272,40 @@ class BleForegroundService : Service() {
             setSingleLine(true)
         }
 
-        leftWing.addView(statusDot)
         leftWing.addView(speedTv)
         leftWing.addView(unitTv)
 
-        // Center Front-Facing Camera Island Spacer (38dp gap for the center punch-hole camera)
+        // Center Front-Facing Camera Island Spacer (32dp gap for the center punch-hole camera)
         val cameraHoleSpacer = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(20))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(32), dpToPx(18))
         }
 
-        // Right Wing (to the right of the front-facing camera cutout): Live Pace
+        // Right Wing (to the right of the front-facing camera cutout): Live Pace + Unit (tight WRAP_CONTENT)
         val rightWing = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(86),
+                LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
 
         val paceTv = TextView(this).apply {
             setTextColor(Color.parseColor("#FFFFFF"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            setSingleLine(true)
+        }
+
+        val paceUnitTv = TextView(this).apply {
+            setTextColor(Color.parseColor("#D4D4D4"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             setSingleLine(true)
         }
 
         rightWing.addView(paceTv)
+        rightWing.addView(paceUnitTv)
 
         container.addView(leftWing)
         container.addView(cameraHoleSpacer)
@@ -345,6 +344,7 @@ class BleForegroundService : Service() {
             leftSpeedTextView = speedTv
             leftUnitTextView = unitTv
             rightPaceTextView = paceTv
+            rightPaceUnitTextView = paceUnitTv
         } catch (_: Exception) {
             dynamicIslandView = null
         }
@@ -359,6 +359,7 @@ class BleForegroundService : Service() {
         leftSpeedTextView = null
         leftUnitTextView = null
         rightPaceTextView = null
+        rightPaceUnitTextView = null
     }
 
     private fun updateNotification() {
