@@ -73,6 +73,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
 
   // Preview state for the Android Dynamic Island overlay when minimised while broadcasting
   const [dynamicIslandPreview, setDynamicIslandPreview] = useState<boolean>(false);
+  const [dynamicIslandDebug, setDynamicIslandDebug] = useState<boolean>(false);
+  const islandHoldRef = useRef<number | null>(null);
+  const islandHoldFiredRef = useRef<boolean>(false);
 
   useEffect(() => {
     const updateClock = () => {
@@ -497,37 +500,94 @@ export const PaceController: React.FC<PaceControllerProps> = ({
       {/* Dynamic Island Live Overlay Preview (flanking either side of top front-facing camera island when minimised while broadcasting) */}
       {dynamicIslandPreview && isBroadcasting && (
         <aside
-          onClick={() => setDynamicIslandPreview(false)}
-          title="Dynamic Island Overlay (tap to return to full app)"
+          onPointerDown={() => {
+            islandHoldFiredRef.current = false;
+            if (islandHoldRef.current !== null) window.clearTimeout(islandHoldRef.current);
+            islandHoldRef.current = window.setTimeout(() => {
+              islandHoldFiredRef.current = true;
+              setDynamicIslandDebug((prev) => !prev);
+            }, 600);
+          }}
+          onPointerUp={() => {
+            if (islandHoldRef.current !== null) {
+              window.clearTimeout(islandHoldRef.current);
+              islandHoldRef.current = null;
+            }
+            if (!islandHoldFiredRef.current && !dynamicIslandDebug) {
+              setDynamicIslandPreview(false);
+            }
+          }}
+          onPointerCancel={() => {
+            if (islandHoldRef.current !== null) {
+              window.clearTimeout(islandHoldRef.current);
+              islandHoldRef.current = null;
+            }
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setDynamicIslandDebug((prev) => !prev);
+          }}
+          title="Dynamic Island Overlay (tap to return to full app, long-press for DisplayCutout debug)"
           aria-label="Dynamic Island live broadcast speed overlay"
-          className="fixed top-1.5 left-1/2 -translate-x-1/2 z-50 flex items-center bg-black rounded-full px-2 py-1 shadow-[0_4px_20px_rgba(0,0,0,0.85)] cursor-pointer select-none animate-fade-in"
+          className="fixed top-1.5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center select-none animate-fade-in"
         >
-          {/* Left side of front camera island: Speed (no dot) */}
-          <div className="flex items-baseline whitespace-nowrap font-mono">
-            <span className="text-xs sm:text-[13.5px] font-black text-[#4ade80] tracking-tight">
-              {unitSystem === 'metric' ? speed.toFixed(1) : kmhToMph(speed).toFixed(1)}
-            </span>
-            <span className="text-[10px] font-bold text-neutral-300 ml-0.5">
-              {unitSystem === 'metric' ? 'km/h' : 'mph'}
-            </span>
+          <div className="flex items-center bg-black rounded-full px-2 py-1 shadow-[0_4px_20px_rgba(0,0,0,0.85)] cursor-pointer">
+            {/* Left side of front camera island: Speed (no dot) */}
+            <div className="flex items-baseline whitespace-nowrap font-mono">
+              <span className="text-xs sm:text-[13.5px] font-black text-[#4ade80] tracking-tight">
+                {unitSystem === 'metric' ? speed.toFixed(1) : kmhToMph(speed).toFixed(1)}
+              </span>
+              <span className="text-[10px] font-bold text-neutral-300 ml-0.5">
+                {unitSystem === 'metric' ? 'km/h' : 'mph'}
+              </span>
+            </div>
+
+            {/* Center front-facing camera island cutout */}
+            <div className="w-8 flex items-center justify-center shrink-0">
+              <span className="w-4 h-4 rounded-full bg-black border border-neutral-800 shadow-inner flex items-center justify-center">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#16202a]" />
+              </span>
+            </div>
+
+            {/* Right side of front camera island: Live Pace */}
+            <div className="flex items-baseline whitespace-nowrap font-mono">
+              <span className="text-xs sm:text-[13.5px] font-black text-white tracking-tight">
+                {unitSystem === 'metric' ? formatPace(speed) : formatPaceMile(speed)}
+              </span>
+              <span className="text-[10px] font-bold text-neutral-300 ml-0.5">
+                {unitSystem === 'metric' ? '/km' : '/mi'}
+              </span>
+            </div>
           </div>
 
-          {/* Center front-facing camera island cutout */}
-          <div className="w-8 flex items-center justify-center shrink-0">
-            <span className="w-4 h-4 rounded-full bg-black border border-neutral-800 shadow-inner flex items-center justify-center">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#16202a]" />
-            </span>
-          </div>
+          {dynamicIslandDebug && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="mt-2 w-[310px] rounded-xl bg-[#111315]/95 border border-emerald-400 p-3 font-mono text-[11px] text-neutral-200 shadow-2xl space-y-1.5"
+            >
+              <div className="flex items-center justify-between text-[#4ade80] font-bold text-xs">
+                <span>DYNAMIC ISLAND &amp; CUTOUT DEBUG</span>
+                <button
+                  onClick={() => setDynamicIslandDebug(false)}
+                  className="text-neutral-400 hover:text-white px-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="text-[10.5px] leading-relaxed whitespace-pre-line">
+                {`DISPLAY CUTOUT (rects=1):
+  L=684, T=0, R=756, B=128
+  size=72x128px, center=(720, 64)
+  estLensTop=56px, estLensCenterY=92px
+  safeInsets: T=128px, B=0px, L=0px, R=0px
 
-          {/* Right side of front camera island: Live Pace */}
-          <div className="flex items-baseline whitespace-nowrap font-mono">
-            <span className="text-xs sm:text-[13.5px] font-black text-white tracking-tight">
-              {unitSystem === 'metric' ? formatPace(speed) : formatPaceMile(speed)}
-            </span>
-            <span className="text-[10px] font-bold text-neutral-300 ml-0.5">
-              {unitSystem === 'metric' ? '/km' : '/mi'}
-            </span>
-          </div>
+DYNAMIC ISLAND OVERLAY:
+  top (y): 42 px (14.0 dp)
+  height:  68 px (22.7 dp)
+  bottom:  110 px (centerY=76 px)`}
+              </div>
+            </div>
+          )}
         </aside>
       )}
 
