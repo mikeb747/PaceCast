@@ -308,3 +308,53 @@ export function computeDynamicIslandMetrics(params: {
     estLensCenterYPx,
   };
 }
+
+export interface HeaderScaleMetrics {
+  scale: number;
+  availableWingDp: number;
+  safeWingDp: number;
+  hasCenteredCutout: boolean;
+}
+
+/**
+ * Mirrors Android's DynamicIslandGeometry.computeHeaderScale(...) for deterministic testing
+ * of in-app top bar scaling across Xiaomi, Pixel, compact phones, and wide displays.
+ */
+export function computeHeaderScale(params: {
+  screenWidthPx: number;
+  density: number;
+  holeRect: CutoutRect | null;
+}): HeaderScaleMetrics {
+  const { screenWidthPx, density, holeRect } = params;
+  const safeDensity = Math.max(density, 1);
+  const screenWidthDp = Math.max(screenWidthPx / safeDensity, 320);
+  const effectiveContainerDp = Math.min(screenWidthDp, 520);
+
+  const holeWidth = holeRect ? holeRect.right - holeRect.left : 0;
+  const holeCenterX = holeRect ? (holeRect.left + holeRect.right) >> 1 : -1;
+  const isCenteredCutout =
+    holeRect !== null &&
+    holeWidth > 0 &&
+    screenWidthPx > 0 &&
+    holeCenterX >= Math.round(screenWidthPx * 0.3) &&
+    holeCenterX <= Math.round(screenWidthPx * 0.7);
+
+  let rawWingDp: number;
+  if (isCenteredCutout && holeRect !== null) {
+    const leftWingDp = holeRect.left / safeDensity;
+    const rightWingDp = (screenWidthPx - holeRect.right) / safeDensity;
+    rawWingDp = Math.min(Math.min(leftWingDp, rightWingDp), effectiveContainerDp * 0.5);
+  } else {
+    rawWingDp = effectiveContainerDp * 0.46;
+  }
+
+  const safeWingDp = Math.max(rawWingDp - 16, 110);
+  const scale = Math.min(Math.max(safeWingDp / 208, 0.72), 1.0);
+
+  return {
+    scale,
+    availableWingDp: rawWingDp,
+    safeWingDp,
+    hasCenteredCutout: isCenteredCutout,
+  };
+}

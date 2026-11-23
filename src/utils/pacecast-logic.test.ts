@@ -9,6 +9,7 @@ import {
   PaceTransitionManager,
   DEFAULT_SPEED_PRESETS,
   computeDynamicIslandMetrics,
+  computeHeaderScale,
 } from './pacecast-logic';
 
 test('DEFAULT_SPEED_PRESETS matches [6, 11, 11.5, 12, 16, 17]', () => {
@@ -169,4 +170,50 @@ test('DynamicIslandGeometry applies manual user Y/H debug nudges cleanly', () =>
   assert.strictEqual(m.targetY, 15);
   assert.strictEqual(m.pillHeightPx, 91);
   assert.strictEqual(m.bottomPx, 106);
+});
+
+test('computeHeaderScale scales top bar ~20% smaller on Xiaomi Redmi Note 10 Pro (1080px @ 2.75x = 393dp)', () => {
+  const h = computeHeaderScale({
+    screenWidthPx: 1080,
+    density: 2.75,
+    holeRect: { left: 503, top: 0, right: 577, bottom: 93 },
+  });
+  assert.strictEqual(h.hasCenteredCutout, true);
+  assert.ok(h.availableWingDp > 182 && h.availableWingDp < 183.5);
+  assert.ok(h.scale >= 0.79 && h.scale <= 0.81, `Expected ~0.80x on Xiaomi, got ${h.scale}`);
+  // Verify scaled left cluster (~190dp * scale) comfortably clears the 182.9dp cutout left edge
+  assert.ok(190 * h.scale < h.availableWingDp - 16);
+});
+
+test('computeHeaderScale preserves balanced proportions with camera clearance on Pixel 8 Pro (2.25x & 3.0x)', () => {
+  const pixel225 = computeHeaderScale({
+    screenWidthPx: 1008,
+    density: 2.25,
+    holeRect: { left: 462, top: 0, right: 545, bottom: 113 },
+  });
+  const pixel300 = computeHeaderScale({
+    screenWidthPx: 1344,
+    density: 3.0,
+    holeRect: { left: 616, top: 0, right: 728, bottom: 151 },
+  });
+  assert.strictEqual(pixel225.hasCenteredCutout, true);
+  assert.ok(pixel225.scale >= 0.90 && pixel225.scale <= 0.92, `Expected ~0.91x on Pixel, got ${pixel225.scale}`);
+  assert.ok(Math.abs(pixel225.scale - pixel300.scale) < 0.005, 'Pixel 2.25x and 3.0x should scale identically');
+});
+
+test('computeHeaderScale handles compact 360dp phones and wide no-cutout displays cleanly', () => {
+  const compact = computeHeaderScale({
+    screenWidthPx: 1080,
+    density: 3.0,
+    holeRect: { left: 500, top: 0, right: 580, bottom: 96 },
+  });
+  assert.ok(compact.scale >= 0.72 && compact.scale <= 0.74);
+
+  const wideNoCutout = computeHeaderScale({
+    screenWidthPx: 1800,
+    density: 3.0,
+    holeRect: null,
+  });
+  assert.strictEqual(wideNoCutout.hasCenteredCutout, false);
+  assert.strictEqual(wideNoCutout.scale, 1.0);
 });

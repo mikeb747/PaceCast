@@ -3,22 +3,16 @@ import {
   RotateCcw,
   Delete,
   CornerDownLeft,
-  Radio,
-  Sun,
-  Code2,
   Layers,
   X,
   Check,
-  Smartphone,
 } from 'lucide-react';
 import {
   clampSpeed,
   formatPace,
   formatPaceMile,
   kmhToMph,
-  encodeRscPacket,
   PaceTransitionManager,
-  RscPacket,
   MIN_SPEED_KMH,
   MAX_SPEED_KMH,
   DEFAULT_SPEED_KMH,
@@ -33,19 +27,13 @@ const HOLD_DELAY = 450;
 const HOLD_REPEAT = 190;
 
 interface PaceControllerProps {
-  onOpenTelemetry: () => void;
-  onOpenAndroidCode: () => void;
   isBroadcasting: boolean;
   onToggleBroadcasting: () => void;
-  onPacketEmitted: (packet: RscPacket) => void;
 }
 
 export const PaceController: React.FC<PaceControllerProps> = ({
-  onOpenTelemetry,
-  onOpenAndroidCode,
   isBroadcasting,
   onToggleBroadcasting,
-  onPacketEmitted,
 }) => {
   // Speed states
   const [speed, setSpeed] = useState<number>(() => {
@@ -59,8 +47,6 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   });
 
   const [keypadValue, setKeypadValue] = useState<string>('');
-  const [wakeLockActive, setWakeLockActive] = useState<boolean>(false);
-  const wakeLockRef = useRef<any>(null);
 
   // Live clock displayed to the right of PaceCast
   const [currentTime, setCurrentTime] = useState<string>(() => {
@@ -72,12 +58,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   const [batteryLevel, setBatteryLevel] = useState<number>(55);
 
   // Preview state for the Android Dynamic Island overlay when minimised while broadcasting
-  const [showDebugButtons, setShowDebugButtons] = useState<boolean>(false);
   const [dynamicIslandPreview, setDynamicIslandPreview] = useState<boolean>(false);
-  const [dynamicIslandDebug, setDynamicIslandDebug] = useState<boolean>(false);
-  const [islandOffsetY, setIslandOffsetY] = useState<number>(0);
-  const [islandHeightDelta, setIslandHeightDelta] = useState<number>(0);
-  const titleHoldRef = useRef<number | null>(null);
 
   useEffect(() => {
     const updateClock = () => {
@@ -263,10 +244,8 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   // Hold / long-press timers for +/- buttons
   const holdTimeout = useRef<number | null>(null);
   const holdInterval = useRef<number | null>(null);
-  const speedRef = useRef(speed);
 
   useEffect(() => {
-    speedRef.current = speed;
     localStorage.setItem('pacecast-speed', speed.toFixed(1));
   }, [speed]);
 
@@ -274,53 +253,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
     localStorage.setItem('pacecast-previous-speed', previousSpeed.toFixed(1));
   }, [previousSpeed]);
 
-  // 1 Hz BLE Broadcast Loop
-  useEffect(() => {
-    let timer: number | null = null;
-    if (isBroadcasting) {
-      const initialPacket = encodeRscPacket(speedRef.current);
-      onPacketEmitted(initialPacket);
-
-      timer = window.setInterval(() => {
-        const packet = encodeRscPacket(speedRef.current);
-        onPacketEmitted(packet);
-      }, 1000);
-    }
-    return () => {
-      if (timer !== null) clearInterval(timer);
-    };
-  }, [isBroadcasting, onPacketEmitted]);
-
   useEffect(() => {
     return () => stopHold();
   }, []);
-
-  const toggleWakeLock = async () => {
-    if ('wakeLock' in navigator) {
-      if (wakeLockActive) {
-        try {
-          await wakeLockRef.current?.release();
-          wakeLockRef.current = null;
-          setWakeLockActive(false);
-        } catch (e) {
-          console.warn('Wake lock release error', e);
-        }
-      } else {
-        try {
-          const lock = await (navigator as any).wakeLock.request('screen');
-          wakeLockRef.current = lock;
-          setWakeLockActive(true);
-          lock.addEventListener('release', () => {
-            setWakeLockActive(false);
-          });
-        } catch (err) {
-          console.warn('Wake lock error', err);
-        }
-      }
-    } else {
-      setWakeLockActive(!wakeLockActive);
-    }
-  };
 
   function stopHold() {
     if (holdTimeout.current !== null) {
@@ -411,44 +346,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
         style={{ paddingRight: '6px', paddingLeft: '6px' }}
         className="shrink-0 flex items-center justify-between gap-1 pb-0.5 pt-0.5 px-0.5"
       >
-        <div
-          onPointerDown={() => {
-            if (titleHoldRef.current !== null) window.clearTimeout(titleHoldRef.current);
-            titleHoldRef.current = window.setTimeout(() => {
-              setShowDebugButtons((prev) => {
-                const next = !prev;
-                if (!next) {
-                  setDynamicIslandDebug(false);
-                }
-                return next;
-              });
-            }, 600);
-          }}
-          onPointerUp={() => {
-            if (titleHoldRef.current !== null) {
-              window.clearTimeout(titleHoldRef.current);
-              titleHoldRef.current = null;
-            }
-          }}
-          onPointerCancel={() => {
-            if (titleHoldRef.current !== null) {
-              window.clearTimeout(titleHoldRef.current);
-              titleHoldRef.current = null;
-            }
-          }}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setShowDebugButtons((prev) => {
-              const next = !prev;
-              if (!next) {
-                setDynamicIslandDebug(false);
-              }
-              return next;
-            });
-          }}
-          title="Long-press on PaceCast to toggle debug buttons"
-          className="flex items-baseline gap-1.5 sm:gap-2.5 min-w-0 select-none cursor-pointer"
-        >
+        <div className="flex items-baseline gap-1.5 sm:gap-2.5 min-w-0 select-none">
           <h1 className="text-[22px] sm:text-[28px] font-black tracking-tight text-white leading-tight truncate">
             PaceCast
           </h1>
@@ -461,59 +359,6 @@ export const PaceController: React.FC<PaceControllerProps> = ({
         </div>
 
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-          {showDebugButtons && (
-            <>
-              <button
-                onClick={toggleWakeLock}
-                className={`p-1 sm:p-1.5 rounded-xl border transition ${
-                  wakeLockActive
-                    ? 'bg-amber-400/15 border-amber-400/40 text-amber-300'
-                    : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-white'
-                }`}
-                title={wakeLockActive ? 'Screen Awake: ON' : 'Keep Screen Awake on Treadmill'}
-                aria-label="Toggle screen wake lock"
-              >
-                <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
-
-              <button
-                onClick={onOpenTelemetry}
-                className="p-1 sm:p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
-                title="Inspect live BLE 0x1814 RSC GATT telemetry"
-                aria-label="Inspect BLE telemetry"
-              >
-                <Radio className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
-
-              <button
-                onClick={() => {
-                  const next = !(dynamicIslandPreview && dynamicIslandDebug);
-                  setDynamicIslandPreview(next);
-                  setDynamicIslandDebug(next);
-                }}
-                className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-xl border font-mono text-[10px] sm:text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                  dynamicIslandPreview && isBroadcasting
-                    ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300 shadow-[0_0_10px_rgba(74,222,128,0.25)]'
-                    : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30'
-                }`}
-                title="Toggle Dynamic Island & DisplayCutout debug panel"
-                aria-label="Toggle Dynamic Island and DisplayCutout debug panel"
-              >
-                <Smartphone className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                <span>DBG</span>
-              </button>
-
-              <button
-                onClick={onOpenAndroidCode}
-                className="p-1 sm:p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
-                title="View Kotlin & Compose Android source code"
-                aria-label="View Android source code"
-              >
-                <Code2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
-            </>
-          )}
-
           {/* Interactive Status Pill */}
           <button
             onClick={onToggleBroadcasting}
@@ -548,10 +393,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
       {/* Dynamic Island Live Overlay Preview (flanking either side of top front-facing camera island when minimised while broadcasting) */}
       {dynamicIslandPreview && isBroadcasting && (
         <aside
-          onClick={() => {
-            setDynamicIslandPreview(false);
-            setDynamicIslandDebug(false);
-          }}
+          onClick={() => setDynamicIslandPreview(false)}
           title="Dynamic Island Overlay (click to open app back up)"
           aria-label="Dynamic Island live broadcast speed overlay"
           className="fixed top-1.5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center select-none animate-fade-in"
@@ -584,87 +426,6 @@ export const PaceController: React.FC<PaceControllerProps> = ({
               </span>
             </div>
           </div>
-
-          {dynamicIslandDebug && (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="mt-2 w-[320px] rounded-xl bg-[#111315]/95 border border-emerald-400 p-3 font-mono text-[11px] text-neutral-200 shadow-2xl space-y-2"
-            >
-              <div className="flex items-center justify-between text-[#4ade80] font-bold text-xs">
-                <span>DYNAMIC ISLAND &amp; CUTOUT DEBUG</span>
-                <button
-                  onClick={() => setDynamicIslandDebug(false)}
-                  className="text-neutral-400 hover:text-white px-1 cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="text-[10.5px] leading-relaxed whitespace-pre-line">
-                {`DISPLAY CUTOUT (rects=1):
-  L=684, T=0, R=756, B=128
-  size=72x128px, center=(720, 64)
-  estLensTop=56px, estLensCenterY=92px
-  safeInsets: T=128px, B=0px, L=0px, R=0px
-
-DYNAMIC ISLAND OVERLAY:
-  top (y): ${42 + islandOffsetY} px (${((42 + islandOffsetY) / 3).toFixed(1)} dp) [nudgeY=${islandOffsetY}]
-  height:  ${66 + islandHeightDelta} px (${((66 + islandHeightDelta) / 3).toFixed(1)} dp) [nudgeH=${islandHeightDelta}]
-  bottom:  ${42 + islandOffsetY + 66 + islandHeightDelta} px (centerY=${Math.round(42 + islandOffsetY + (66 + islandHeightDelta) / 2)} px)`}
-              </div>
-              <div className="grid grid-cols-4 gap-1 pt-1">
-                <button
-                  onClick={() => setIslandOffsetY((y) => y - 1)}
-                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-[#4ade80] hover:border-emerald-400 cursor-pointer"
-                >
-                  Y -1px
-                </button>
-                <button
-                  onClick={() => setIslandOffsetY((y) => y + 1)}
-                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-[#4ade80] hover:border-emerald-400 cursor-pointer"
-                >
-                  Y +1px
-                </button>
-                <button
-                  onClick={() => setIslandHeightDelta((h) => h - 2)}
-                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-[#4ade80] hover:border-emerald-400 cursor-pointer"
-                >
-                  H -2px
-                </button>
-                <button
-                  onClick={() => setIslandHeightDelta((h) => h + 2)}
-                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-[#4ade80] hover:border-emerald-400 cursor-pointer"
-                >
-                  H +2px
-                </button>
-              </div>
-              <div className="grid grid-cols-3 gap-1">
-                <button
-                  onClick={() => {
-                    setIslandOffsetY(0);
-                    setIslandHeightDelta(0);
-                  }}
-                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-neutral-300 hover:text-white cursor-pointer"
-                >
-                  Reset
-                </button>
-                <button
-                  onClick={() => {
-                    setDynamicIslandDebug(false);
-                    setDynamicIslandPreview(false);
-                  }}
-                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-[#4ade80] hover:border-emerald-400 cursor-pointer"
-                >
-                  Open App
-                </button>
-                <button
-                  onClick={() => setDynamicIslandDebug(false)}
-                  className="py-1 rounded bg-[#222527] border border-[#2e3235] text-[10px] font-bold text-neutral-300 hover:text-white cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          )}
         </aside>
       )}
 

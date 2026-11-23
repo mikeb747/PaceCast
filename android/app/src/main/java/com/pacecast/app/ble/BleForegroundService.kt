@@ -1,6 +1,8 @@
 package com.pacecast.app.ble
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
+import android.app.ActivityOptions
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -17,10 +19,14 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -36,6 +42,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class BleForegroundService : Service() {
@@ -98,6 +105,7 @@ class BleForegroundService : Service() {
     // Long-press debug overlay view showing DisplayCutout & Dynamic Island metrics
     private var debugOverlayView: View? = null
     private var debugInfoTextView: TextView? = null
+    private var lastOverlayOpenRequestMs: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -334,6 +342,16 @@ class BleForegroundService : Service() {
         )
     }
 
+    private fun resolveStatusBarHeightPx(): Int {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val top = windowManager?.currentWindowMetrics?.windowInsets
+                ?.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars())?.top ?: 0
+            if (top > 0) return top
+        }
+        val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (resId > 0) resources.getDimensionPixelSize(resId) else 0
+    }
+
     private fun computeTouchWrapperHeight(targetY: Int, targetPillHeight: Int, holeRect: Rect?): Int {
         val sysCutout = resolveSystemDisplayCutout()
         val safeTop = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
@@ -341,28 +359,100 @@ class BleForegroundService : Service() {
         } else {
             holeRect?.bottom ?: dpToPx(44)
         }
-        // Extend transparent touch hitbox 24dp below safeInsetTop so finger taps on the island register outside the StatusBar intercept strip
-        return maxOf(targetPillHeight, (safeTop - targetY) + dpToPx(24))
+        val statusBarTop = resolveStatusBarHeightPx()
+        val topInterceptBottom = maxOf(safeTop, statusBarTop, targetY + targetPillHeight)
+        // Extend transparent touch hitbox 28dp below the status-bar / cutout intercept strip
+        // so finger taps on or just beneath the island reliably reach our overlay window.
+        return maxOf(targetPillHeight, (topInterceptBottom - targetY) + dpToPx(28))
     }
 
     private fun openMainAppFromOverlay() {
+        if (SpeedStateManager.isAppInForeground.value) return
+
+        val nowMs = SystemClock.elapsedRealtime()
+        if (nowMs - lastOverlayOpenRequestMs < 400L) return
+        lastOverlayOpenRequestMs = nowMs
+
         val openIntent = Intent(this@BleForegroundService, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
         }
+
+        // 1. Primary path: PendingIntent.send() with explicit Android 14+ BAL opt-in.
+        //    Bypasses Android's 5-second Home-button stopAppSwitches() cooldown and
+        //    delegates our visible overlay's BAL privilege on API 34+ (targetSdk 34).
+        var launchedViaPendingIntent = false
         try {
-            startActivity(openIntent)
-        } catch (_: Exception) {
-            try {
-                val pi = PendingIntent.getActivity(
+            val piFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                val creatorOptions = ActivityOptions.makeBasic().apply {
+                    setPendingIntentBackgroundActivityStartMode(
+                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    )
+                    // On Android 15 (API 35+), also opt-in creator BAL privileges via reflection
+                    // while staying fully compatible with compileSdk = 34.
+                    if (Build.VERSION.SDK_INT >= 35) {
+                        try {
+                            val method = ActivityOptions::class.java.getMethod(
+                                "setPendingIntentCreatorBackgroundActivityStartMode",
+                                Int::class.javaPrimitiveType
+                            )
+                            method.invoke(this, ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                        } catch (_: Exception) {}
+                    }
+                }.toBundle()
+                PendingIntent.getActivity(
+                    this@BleForegroundService,
+                    100,
+                    openIntent,
+                    piFlags,
+                    creatorOptions
+                )
+            } else {
+                PendingIntent.getActivity(
+                    this@BleForegroundService,
+                    100,
+                    openIntent,
+                    piFlags
+                )
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                val senderOptions = ActivityOptions.makeBasic().apply {
+                    setPendingIntentBackgroundActivityStartMode(
+                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    )
+                }.toBundle()
+                pendingIntent.send(
                     this@BleForegroundService,
                     0,
-                    openIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    null,
+                    null,
+                    null,
+                    null,
+                    senderOptions
                 )
-                pi.send()
+            } else {
+                pendingIntent.send()
+            }
+            launchedViaPendingIntent = true
+        } catch (_: Exception) {}
+
+        // 2. Reinforce by bringing our existing minimized AppTask directly to front
+        //    (idempotent with singleTask and rescues OEM background-launch throttling).
+        try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            am?.appTasks?.firstOrNull()?.moveToFront()
+        } catch (_: Exception) {}
+
+        // 3. Final fallback to direct startActivity if PendingIntent threw an exception.
+        if (!launchedViaPendingIntent) {
+            try {
+                startActivity(openIntent)
             } catch (_: Exception) {}
         }
     }
@@ -589,12 +679,7 @@ class BleForegroundService : Service() {
         actionRow.addView(createDebugActionButton("Open App", "#2563EB", "#FFFFFF") {
             SpeedStateManager.setIslandDebugEnabled(false)
             removeDebugOverlay()
-            val openIntent = Intent(this@BleForegroundService, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            startActivity(openIntent)
+            openMainAppFromOverlay()
         })
         actionRow.addView(createDebugActionButton("Reset", "#2A2E33", "#FCD34D") {
             adjustUserIslandMetrics(0, 0, reset = true)
@@ -702,6 +787,7 @@ class BleForegroundService : Service() {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun createAndAttachDynamicIsland() {
         val wm = windowManager ?: return
         if (dynamicIslandView != null) return
@@ -713,11 +799,14 @@ class BleForegroundService : Service() {
         val initialY = metrics.targetY
         val initialTouchWrapperHeight = computeTouchWrapperHeight(initialY, initialPillHeight, holeRect)
 
-        // Visible black pill container that wraps tightly around the text flanking the top camera island (no green outline)
+        // Visible black pill container that wraps tightly around the text flanking the top camera island (no green outline).
+        // Kept non-clickable so touchWrapper handles the entire hitbox as one unified target without split-touch cancellations.
         val pillContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = initialPillHeight
+            isClickable = false
+            isFocusable = false
             setPadding(dpToPx(8), 0, dpToPx(8), 0)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -729,18 +818,79 @@ class BleForegroundService : Service() {
                 cornerRadius = initialPillHeight / 2f
                 setColor(Color.parseColor("#000000"))
             }
+        }
+
+        // Transparent unified touch wrapper extending slightly left/right and below the status bar intercept strip
+        // so tapping the Dynamic Island reliably registers and re-opens PaceCast.
+        val touchWrapper = FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            setPadding(dpToPx(8), 0, dpToPx(8), 0)
+            isClickable = true
+            isFocusable = false
+            contentDescription = "Open PaceCast"
             setOnClickListener {
                 openMainAppFromOverlay()
             }
-        }
 
-        // Transparent touch wrapper extending slightly below safeInsetTop so tapping the Dynamic Island registers and re-opens PaceCast
-        val touchWrapper = FrameLayout(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            isClickable = true
-            isFocusable = false
-            setOnClickListener {
-                openMainAppFromOverlay()
+            var downRawX = 0f
+            var downRawY = 0f
+            var downTimeMs = 0L
+            val maxTapSlopPx = dpToPx(36).toFloat()
+
+            setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downRawX = event.rawX
+                        downRawY = event.rawY
+                        downTimeMs = event.eventTime
+                        pillContainer.animate()
+                            .scaleX(0.95f)
+                            .scaleY(0.95f)
+                            .alpha(0.85f)
+                            .setDuration(70L)
+                            .start()
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = abs(event.rawX - downRawX)
+                        val dy = abs(event.rawY - downRawY)
+                        if (dx > maxTapSlopPx || dy > maxTapSlopPx) {
+                            pillContainer.animate()
+                                .scaleX(1f)
+                                .scaleY(1f)
+                                .alpha(1f)
+                                .setDuration(90L)
+                                .start()
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        pillContainer.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .alpha(1f)
+                            .setDuration(90L)
+                            .start()
+                        val dx = abs(event.rawX - downRawX)
+                        val dy = abs(event.rawY - downRawY)
+                        val durationMs = event.eventTime - downTimeMs
+                        if (dx <= maxTapSlopPx && dy <= maxTapSlopPx && durationMs <= 1200L) {
+                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                            view.performClick()
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        pillContainer.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .alpha(1f)
+                            .setDuration(90L)
+                            .start()
+                        true
+                    }
+                    else -> false
+                }
             }
         }
 

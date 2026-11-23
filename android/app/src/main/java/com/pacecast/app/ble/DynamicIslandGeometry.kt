@@ -23,13 +23,19 @@ data class DynamicIslandMetrics(
     val estLensCenterYPx: Int?
 )
 
+data class HeaderScaleMetrics(
+    val scale: Float,
+    val availableWingDp: Float,
+    val safeWingDp: Float,
+    val hasCenteredCutout: Boolean
+)
+
 /**
- * Pure, density-independent Dynamic Island geometry calculator.
+ * Pure, density-independent Dynamic Island & in-app Header geometry calculator.
  *
- * Computes overlay vertical position (targetY), pill height (pillHeightPx), and
- * camera spacer width (spacerWidthPx) directly from the device's DisplayCutout
- * metrics and screen density, avoiding fixed raw-pixel offsets that misalign across
- * OEMs (e.g., Xiaomi/MIUI tight cutouts vs Pixel tall status-bar cutouts).
+ * Computes overlay vertical position (targetY), pill height (pillHeightPx),
+ * camera spacer width (spacerWidthPx), and in-app header scale factor directly
+ * from the device's DisplayCutout metrics and screen density.
  */
 object DynamicIslandGeometry {
 
@@ -41,8 +47,53 @@ object DynamicIslandGeometry {
     private const val TIGHT_BOTTOM_PAD_DP = 2f
     private const val TALL_CUTOUT_THRESHOLD_DP = 42f
 
+    private const val HEADER_MAX_CONTAINER_DP = 520f
+    private const val HEADER_HORIZONTAL_MARGIN_AND_BUFFER_DP = 16f
+    private const val HEADER_BASELINE_WING_DP = 208f
+    private const val HEADER_MIN_SCALE = 0.72f
+    private const val HEADER_MAX_SCALE = 1.0f
+
     private fun dpToPx(dp: Float, density: Float): Int {
         return (dp * density).roundToInt()
+    }
+
+    /**
+     * Computes a responsive top-bar scale factor based on the actual logical horizontal space
+     * flanking a centered camera cutout (or logical screen width if no centered cutout exists).
+     * Guarantees clean camera clearance on all phones (e.g., ~0.80x on Xiaomi Note 10 Pro
+     * 393dp wide, ~0.91x on Pixel 8 Pro 448dp wide, ~0.72x on 360dp compact displays).
+     */
+    fun computeHeaderScale(
+        screenWidthPx: Int,
+        density: Float,
+        holeRect: Rect?
+    ): HeaderScaleMetrics {
+        val safeDensity = density.coerceAtLeast(1f)
+        val screenWidthDp = (screenWidthPx / safeDensity).coerceAtLeast(320f)
+        val effectiveContainerDp = minOf(screenWidthDp, HEADER_MAX_CONTAINER_DP)
+
+        val isCenteredCutout = holeRect != null &&
+            holeRect.width() > 0 &&
+            screenWidthPx > 0 &&
+            holeRect.centerX() in (screenWidthPx * 0.30f).roundToInt()..(screenWidthPx * 0.70f).roundToInt()
+
+        val rawWingDp = if (isCenteredCutout && holeRect != null) {
+            val leftWingDp = holeRect.left / safeDensity
+            val rightWingDp = (screenWidthPx - holeRect.right) / safeDensity
+            minOf(leftWingDp, rightWingDp).coerceAtMost(effectiveContainerDp * 0.5f)
+        } else {
+            effectiveContainerDp * 0.46f
+        }
+
+        val safeWingDp = (rawWingDp - HEADER_HORIZONTAL_MARGIN_AND_BUFFER_DP).coerceAtLeast(110f)
+        val scale = (safeWingDp / HEADER_BASELINE_WING_DP).coerceIn(HEADER_MIN_SCALE, HEADER_MAX_SCALE)
+
+        return HeaderScaleMetrics(
+            scale = scale,
+            availableWingDp = rawWingDp,
+            safeWingDp = safeWingDp,
+            hasCenteredCutout = isCenteredCutout
+        )
     }
 
     /**

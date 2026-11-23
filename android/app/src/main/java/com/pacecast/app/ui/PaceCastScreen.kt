@@ -37,11 +37,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -640,130 +643,183 @@ private fun HeaderSection(
     }
 
     val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
+    val baseDensity = LocalDensity.current
+    val savedCutoutRect by com.pacecast.app.ble.SpeedStateManager.cameraCutoutRect.collectAsState()
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    val dm = context.resources.displayMetrics
+    val activeCutoutRect = remember(savedCutoutRect, view) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            view.rootWindowInsets?.displayCutout
+                ?.boundingRects
+                ?.filter { !it.isEmpty }
+                ?.minByOrNull { it.top }
+                ?: savedCutoutRect
+        } else {
+            savedCutoutRect
+        }
+    }
+
+    val headerMetrics = remember(activeCutoutRect, dm.widthPixels, dm.density) {
+        com.pacecast.app.ble.DynamicIslandGeometry.computeHeaderScale(
+            screenWidthPx = dm.widthPixels,
+            density = dm.density,
+            holeRect = activeCutoutRect
+        )
+    }
+    val s = headerMetrics.scale
+    val wingMaxDp = (headerMetrics.availableWingDp - 12f).coerceAtLeast(110f).dp
+
+    // Lock fontScale to 1.0 in the top bar so Android system font scaling never pushes text under the camera cutout
+    val fixedFontDensity = remember(baseDensity.density) {
+        Density(density = baseDensity.density, fontScale = 1f)
+    }
+
+    CompositionLocalProvider(LocalDensity provides fixedFontDensity) {
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onLongPress = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onToggleDebug()
-                        }
+                .fillMaxWidth()
+                .padding(horizontal = (6f * s).dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier
+                    .then(
+                        if (headerMetrics.hasCenteredCutout) Modifier.widthIn(max = wingMaxDp) else Modifier
                     )
-                }
-                .padding(end = 4.dp),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = "PaceCast",
-                color = TextPrimary,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = (-0.5).sp
-            )
-            Text(
-                text = currentTime,
-                color = TextSecondary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(bottom = 2.dp)
-            )
-        }
-
-        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-        val pulseScale by infiniteTransition.animateFloat(
-            initialValue = 0.85f,
-            targetValue = 1.15f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(800),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "pulseScale"
-        )
-
-        val isConnected = isAdvertising && deviceCount > 0
-
-        val (statusText, statusColor) = when {
-            isConnected -> "Connected" to MintGreen
-            isAdvertising -> "Broadcasting" to com.pacecast.app.ui.theme.ElectricBlue
-            else -> "Standby" to TextSecondary
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // DBG badge only shown when enabled via long-pressing on the PaceCast text
-            if (isIslandDebugEnabled) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(MintGreen.copy(alpha = 0.2f))
-                        .border(
-                            width = 1.dp,
-                            color = MintGreen,
-                            shape = RoundedCornerShape(14.dp)
+                    .clip(RoundedCornerShape((8f * s).dp))
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onLongPress = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onToggleDebug()
+                            }
                         )
-                        .clickable { onToggleDebug() }
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "DBG",
-                        color = MintGreen,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
+                    }
+                    .padding(end = (4f * s).dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy((10f * s).dp)
+            ) {
+                Text(
+                    text = "PaceCast",
+                    color = TextPrimary,
+                    fontSize = (28f * s).sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = (-0.5f * s).sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip
+                )
+                Text(
+                    text = currentTime,
+                    color = TextSecondary,
+                    fontSize = (20f * s).sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.padding(bottom = (2f * s).dp)
+                )
+            }
+
+            val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+            val pulseScale by infiniteTransition.animateFloat(
+                initialValue = 0.85f,
+                targetValue = 1.15f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(800),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "pulseScale"
+            )
+
+            val isConnected = isAdvertising && deviceCount > 0
+
+            val (statusText, statusColor) = when {
+                isConnected -> "Connected" to MintGreen
+                isAdvertising -> "Broadcasting" to com.pacecast.app.ui.theme.ElectricBlue
+                else -> "Standby" to TextSecondary
             }
 
             Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(if (isAdvertising) statusColor.copy(alpha = 0.12f) else CharcoalSurface)
-                    .border(
-                        width = 1.dp,
-                        color = if (isAdvertising) statusColor.copy(alpha = 0.5f) else CharcoalBorder,
-                        shape = RoundedCornerShape(20.dp)
-                    )
-                    .clickable { onToggle() }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.then(
+                    if (headerMetrics.hasCenteredCutout) Modifier.widthIn(max = wingMaxDp) else Modifier
+                ),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy((8f * s).dp)
             ) {
-                Box(
+                // DBG badge only shown when enabled via long-pressing on the PaceCast text
+                if (isIslandDebugEnabled) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape((14f * s).dp))
+                            .background(MintGreen.copy(alpha = 0.2f))
+                            .border(
+                                width = 1.dp,
+                                color = MintGreen,
+                                shape = RoundedCornerShape((14f * s).dp)
+                            )
+                            .clickable { onToggleDebug() }
+                            .padding(horizontal = (7f * s).dp, vertical = (5f * s).dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "DBG",
+                            color = MintGreen,
+                            fontSize = (11f * s).sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                Row(
                     modifier = Modifier
-                        .size(9.dp)
-                        .scale(if (isAdvertising) pulseScale else 1f)
-                        .clip(CircleShape)
-                        .background(if (isAdvertising) statusColor else TextMuted)
-                )
+                        .clip(RoundedCornerShape((20f * s).dp))
+                        .background(if (isAdvertising) statusColor.copy(alpha = 0.12f) else CharcoalSurface)
+                        .border(
+                            width = 1.dp,
+                            color = if (isAdvertising) statusColor.copy(alpha = 0.5f) else CharcoalBorder,
+                            shape = RoundedCornerShape((20f * s).dp)
+                        )
+                        .clickable { onToggle() }
+                        .padding(horizontal = (11f * s).dp, vertical = (6f * s).dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy((7f * s).dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size((9f * s).dp)
+                            .scale(if (isAdvertising) pulseScale else 1f)
+                            .clip(CircleShape)
+                            .background(if (isAdvertising) statusColor else TextMuted)
+                    )
+                    Text(
+                        text = statusText,
+                        color = statusColor,
+                        fontSize = (14f * s).sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip
+                    )
+                }
+
                 Text(
-                    text = statusText,
-                    color = statusColor,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "${batteryLevel}%",
+                    color = Color(0xFF4ADE80),
+                    fontSize = (16f * s).sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip
                 )
             }
-
-            Text(
-                text = "${batteryLevel}%",
-                color = Color(0xFF4ADE80),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
         }
     }
 }
