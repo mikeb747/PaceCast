@@ -72,6 +72,7 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   const [batteryLevel, setBatteryLevel] = useState<number>(55);
 
   // Preview state for the Android Dynamic Island overlay when minimised while broadcasting
+  const [showDebugButtons, setShowDebugButtons] = useState<boolean>(false);
   const [dynamicIslandPreview, setDynamicIslandPreview] = useState<boolean>(false);
   const [dynamicIslandDebug, setDynamicIslandDebug] = useState<boolean>(false);
   const [islandOffsetY, setIslandOffsetY] = useState<number>(0);
@@ -414,9 +415,13 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           onPointerDown={() => {
             if (titleHoldRef.current !== null) window.clearTimeout(titleHoldRef.current);
             titleHoldRef.current = window.setTimeout(() => {
-              const next = !(dynamicIslandPreview && dynamicIslandDebug);
-              setDynamicIslandPreview(next);
-              setDynamicIslandDebug(next);
+              setShowDebugButtons((prev) => {
+                const next = !prev;
+                if (!next) {
+                  setDynamicIslandDebug(false);
+                }
+                return next;
+              });
             }, 600);
           }}
           onPointerUp={() => {
@@ -433,11 +438,15 @@ export const PaceController: React.FC<PaceControllerProps> = ({
           }}
           onContextMenu={(e) => {
             e.preventDefault();
-            const next = !(dynamicIslandPreview && dynamicIslandDebug);
-            setDynamicIslandPreview(next);
-            setDynamicIslandDebug(next);
+            setShowDebugButtons((prev) => {
+              const next = !prev;
+              if (!next) {
+                setDynamicIslandDebug(false);
+              }
+              return next;
+            });
           }}
-          title="Long-press on PaceCast to toggle Dynamic Island & DisplayCutout debug buttons"
+          title="Long-press on PaceCast to toggle debug buttons"
           className="flex items-baseline gap-1.5 sm:gap-2.5 min-w-0 select-none cursor-pointer"
         >
           <h1 className="text-[22px] sm:text-[28px] font-black tracking-tight text-white leading-tight truncate">
@@ -452,54 +461,58 @@ export const PaceController: React.FC<PaceControllerProps> = ({
         </div>
 
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-          <button
-            onClick={toggleWakeLock}
-            className={`p-1 sm:p-1.5 rounded-xl border transition ${
-              wakeLockActive
-                ? 'bg-amber-400/15 border-amber-400/40 text-amber-300'
-                : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-white'
-            }`}
-            title={wakeLockActive ? 'Screen Awake: ON' : 'Keep Screen Awake on Treadmill'}
-            aria-label="Toggle screen wake lock"
-          >
-            <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
+          {showDebugButtons && (
+            <>
+              <button
+                onClick={toggleWakeLock}
+                className={`p-1 sm:p-1.5 rounded-xl border transition ${
+                  wakeLockActive
+                    ? 'bg-amber-400/15 border-amber-400/40 text-amber-300'
+                    : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-white'
+                }`}
+                title={wakeLockActive ? 'Screen Awake: ON' : 'Keep Screen Awake on Treadmill'}
+                aria-label="Toggle screen wake lock"
+              >
+                <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </button>
 
-          <button
-            onClick={onOpenTelemetry}
-            className="p-1 sm:p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
-            title="Inspect live BLE 0x1814 RSC GATT telemetry"
-            aria-label="Inspect BLE telemetry"
-          >
-            <Radio className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
+              <button
+                onClick={onOpenTelemetry}
+                className="p-1 sm:p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
+                title="Inspect live BLE 0x1814 RSC GATT telemetry"
+                aria-label="Inspect BLE telemetry"
+              >
+                <Radio className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </button>
 
-          <button
-            onClick={() => {
-              const next = !(dynamicIslandPreview && dynamicIslandDebug);
-              setDynamicIslandPreview(next);
-              setDynamicIslandDebug(next);
-            }}
-            className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-xl border font-mono text-[10px] sm:text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-              dynamicIslandPreview && isBroadcasting
-                ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300 shadow-[0_0_10px_rgba(74,222,128,0.25)]'
-                : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30'
-            }`}
-            title="Toggle Dynamic Island & DisplayCutout debug panel (positioned below safeInsetTop so buttons receive touches)"
-            aria-label="Toggle Dynamic Island and DisplayCutout debug panel"
-          >
-            <Smartphone className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-            <span>DBG</span>
-          </button>
+              <button
+                onClick={() => {
+                  const next = !(dynamicIslandPreview && dynamicIslandDebug);
+                  setDynamicIslandPreview(next);
+                  setDynamicIslandDebug(next);
+                }}
+                className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-xl border font-mono text-[10px] sm:text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                  dynamicIslandPreview && isBroadcasting
+                    ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300 shadow-[0_0_10px_rgba(74,222,128,0.25)]'
+                    : 'bg-[#222527] border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30'
+                }`}
+                title="Toggle Dynamic Island & DisplayCutout debug panel"
+                aria-label="Toggle Dynamic Island and DisplayCutout debug panel"
+              >
+                <Smartphone className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                <span>DBG</span>
+              </button>
 
-          <button
-            onClick={onOpenAndroidCode}
-            className="p-1 sm:p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
-            title="View Kotlin & Compose Android source code"
-            aria-label="View Android source code"
-          >
-            <Code2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
+              <button
+                onClick={onOpenAndroidCode}
+                className="p-1 sm:p-1.5 rounded-xl bg-[#222527] border border-[#2e3235] text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/30 transition cursor-pointer"
+                title="View Kotlin & Compose Android source code"
+                aria-label="View Android source code"
+              >
+                <Code2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </button>
+            </>
+          )}
 
           {/* Interactive Status Pill */}
           <button
@@ -535,8 +548,11 @@ export const PaceController: React.FC<PaceControllerProps> = ({
       {/* Dynamic Island Live Overlay Preview (flanking either side of top front-facing camera island when minimised while broadcasting) */}
       {dynamicIslandPreview && isBroadcasting && (
         <aside
-          onClick={() => setDynamicIslandDebug((prev) => !prev)}
-          title="Dynamic Island Overlay (short press to toggle DisplayCutout & island position/height debug)"
+          onClick={() => {
+            setDynamicIslandPreview(false);
+            setDynamicIslandDebug(false);
+          }}
+          title="Dynamic Island Overlay (click to open app back up)"
           aria-label="Dynamic Island live broadcast speed overlay"
           className="fixed top-1.5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center select-none animate-fade-in"
         >

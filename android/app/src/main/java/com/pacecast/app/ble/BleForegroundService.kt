@@ -22,6 +22,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
@@ -84,6 +85,7 @@ class BleForegroundService : Service() {
     // Dynamic Island overlay views flanking the top front-facing camera island
     private var windowManager: WindowManager? = null
     private var dynamicIslandView: View? = null
+    private var pillContainerView: LinearLayout? = null
     private var dynamicIslandLayoutParams: WindowManager.LayoutParams? = null
     private var leftWingView: LinearLayout? = null
     private var rightWingView: LinearLayout? = null
@@ -337,8 +339,42 @@ class BleForegroundService : Service() {
         return Triple(pillHeightPx, spacerWidthPx, targetY)
     }
 
+    private fun computeTouchWrapperHeight(targetY: Int, targetPillHeight: Int, holeRect: Rect?): Int {
+        val sysCutout = resolveSystemDisplayCutout()
+        val safeTop = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
+            sysCutout.safeInsetTop
+        } else {
+            holeRect?.bottom ?: dpToPx(44)
+        }
+        // Extend transparent touch hitbox 24dp below safeInsetTop so finger taps on the island register outside the StatusBar intercept strip
+        return maxOf(targetPillHeight, (safeTop - targetY) + dpToPx(24))
+    }
+
+    private fun openMainAppFromOverlay() {
+        val openIntent = Intent(this@BleForegroundService, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        try {
+            startActivity(openIntent)
+        } catch (_: Exception) {
+            try {
+                val pi = PendingIntent.getActivity(
+                    this@BleForegroundService,
+                    0,
+                    openIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                pi.send()
+            } catch (_: Exception) {}
+        }
+    }
+
     private fun applyCutoutPositionAndSize() {
-        val view = dynamicIslandView as? LinearLayout ?: return
+        val rootView = dynamicIslandView ?: return
+        val pillView = pillContainerView ?: return
         val leftWing = leftWingView ?: return
         val rightWing = rightWingView ?: return
         val spacer = cameraHoleSpacerView ?: return
@@ -347,6 +383,7 @@ class BleForegroundService : Service() {
 
         val holeRect = resolveCameraCutoutRect()
         val (targetPillHeight, targetSpacerWidth, targetY) = computeIslandMetrics(holeRect)
+        val touchWrapperHeight = computeTouchWrapperHeight(targetY, targetPillHeight, holeRect)
 
         val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         leftWing.measure(unspecified, unspecified)
@@ -370,18 +407,23 @@ class BleForegroundService : Service() {
             spacerLp.height = targetPillHeight
             spacer.layoutParams = spacerLp
         }
-        if (view.minimumHeight != targetPillHeight) {
-            view.minimumHeight = targetPillHeight
+        val pillLp = pillView.layoutParams as? FrameLayout.LayoutParams
+        if (pillLp != null && pillLp.height != targetPillHeight) {
+            pillLp.height = targetPillHeight
+            pillView.layoutParams = pillLp
         }
-        (view.background as? GradientDrawable)?.cornerRadius = targetPillHeight / 2f
+        if (pillView.minimumHeight != targetPillHeight) {
+            pillView.minimumHeight = targetPillHeight
+        }
+        (pillView.background as? GradientDrawable)?.cornerRadius = targetPillHeight / 2f
 
-        if (params.x != 0 || params.y != targetY || params.height != targetPillHeight) {
+        if (params.x != 0 || params.y != targetY || params.height != touchWrapperHeight) {
             params.x = 0
             params.y = targetY
-            params.height = targetPillHeight
-            if (view.isAttachedToWindow) {
+            params.height = touchWrapperHeight
+            if (rootView.isAttachedToWindow) {
                 try {
-                    wm.updateViewLayout(view, params)
+                    wm.updateViewLayout(rootView, params)
                 } catch (_: Exception) {}
             }
         }
@@ -647,21 +689,36 @@ class BleForegroundService : Service() {
 
         val holeRect = resolveCameraCutoutRect()
         val (initialPillHeight, initialSpacerWidth, initialY) = computeIslandMetrics(holeRect)
+        val initialTouchWrapperHeight = computeTouchWrapperHeight(initialY, initialPillHeight, holeRect)
 
-        // Outer pill container that wraps tightly around the text flanking the top camera island (no green outline)
-        val container = LinearLayout(this).apply {
+        // Visible black pill container that wraps tightly around the text flanking the top camera island (no green outline)
+        val pillContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = initialPillHeight
             setPadding(dpToPx(8), 0, dpToPx(8), 0)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                initialPillHeight,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            )
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = initialPillHeight / 2f
                 setColor(Color.parseColor("#000000"))
             }
             setOnClickListener {
-                // Short press on Dynamic Island to display system DisplayCutout & island position/height debug panel
-                toggleDebugOverlay()
+                openMainAppFromOverlay()
+            }
+        }
+
+        // Transparent touch wrapper extending slightly below safeInsetTop so tapping the Dynamic Island registers and re-opens PaceCast
+        val touchWrapper = FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = true
+            isFocusable = false
+            setOnClickListener {
+                openMainAppFromOverlay()
             }
         }
 
@@ -724,9 +781,10 @@ class BleForegroundService : Service() {
         rightWing.addView(paceTv)
         rightWing.addView(paceUnitTv)
 
-        container.addView(leftWing)
-        container.addView(cameraHoleSpacer)
-        container.addView(rightWing)
+        pillContainer.addView(leftWing)
+        pillContainer.addView(cameraHoleSpacer)
+        pillContainer.addView(rightWing)
+        touchWrapper.addView(pillContainer)
 
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -737,11 +795,11 @@ class BleForegroundService : Service() {
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
-            initialPillHeight,
+            initialTouchWrapperHeight,
             overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
@@ -757,8 +815,9 @@ class BleForegroundService : Service() {
         }
 
         try {
-            wm.addView(container, params)
-            dynamicIslandView = container
+            wm.addView(touchWrapper, params)
+            dynamicIslandView = touchWrapper
+            pillContainerView = pillContainer
             dynamicIslandLayoutParams = params
             leftWingView = leftWing
             rightWingView = rightWing
@@ -769,6 +828,7 @@ class BleForegroundService : Service() {
             rightPaceUnitTextView = paceUnitTv
         } catch (_: Exception) {
             dynamicIslandView = null
+            pillContainerView = null
             dynamicIslandLayoutParams = null
             leftWingView = null
             rightWingView = null
@@ -783,6 +843,7 @@ class BleForegroundService : Service() {
             windowManager?.removeView(view)
         } catch (_: Exception) {}
         dynamicIslandView = null
+        pillContainerView = null
         dynamicIslandLayoutParams = null
         leftWingView = null
         rightWingView = null
@@ -845,22 +906,10 @@ class BleForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Action to toggle Dynamic Island & DisplayCutout debug panel (positioned below status bar touch zone)
-        val debugIntent = Intent(this, BleForegroundService::class.java).apply {
-            action = ACTION_TOGGLE_DEBUG
-        }
-        val debugPendingIntent = PendingIntent.getService(
-            this,
-            2,
-            debugIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val debugLabel = if (SpeedStateManager.isIslandDebugEnabled.value) "Hide Debug" else "Island Debug"
-
         val isConnected = SpeedStateManager.connectedDeviceCount.value > 0
         val connectionStatus = if (isConnected) "Connected to Watch" else "Broadcasting"
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("PaceCast: $displaySpeed $unitLabel ($paceLabel) • $connectionStatus")
             .setContentText("Prev Pace: $displayPrevSpeed $unitLabel • Tap to switch")
@@ -876,14 +925,27 @@ class BleForegroundService : Service() {
                     swapPendingIntent
                 ).build()
             )
-            .addAction(
+
+        if (SpeedStateManager.isIslandDebugEnabled.value) {
+            val debugIntent = Intent(this, BleForegroundService::class.java).apply {
+                action = ACTION_TOGGLE_DEBUG
+            }
+            val debugPendingIntent = PendingIntent.getService(
+                this,
+                2,
+                debugIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(
                 NotificationCompat.Action.Builder(
                     R.drawable.ic_launcher_foreground,
-                    debugLabel,
+                    "Hide Debug",
                     debugPendingIntent
                 ).build()
             )
-            .build()
+        }
+
+        return builder.build()
     }
 
     private data class Tuple4(val val1: String, val val2: String, val val3: String, val val4: String)
