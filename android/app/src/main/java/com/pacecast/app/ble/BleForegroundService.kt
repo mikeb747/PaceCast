@@ -55,7 +55,6 @@ class BleForegroundService : Service() {
         const val ACTION_STOP = "com.pacecast.app.ACTION_STOP"
         const val ACTION_SWAP_PACE = "com.pacecast.app.ACTION_SWAP_PACE"
         const val ACTION_REFRESH_OVERLAY = "com.pacecast.app.ACTION_REFRESH_OVERLAY"
-        const val ACTION_TOGGLE_DEBUG = "com.pacecast.app.ACTION_TOGGLE_DEBUG"
 
         fun startService(context: Context) {
             val intent = Intent(context, BleForegroundService::class.java).apply {
@@ -101,10 +100,6 @@ class BleForegroundService : Service() {
     private var leftUnitTextView: TextView? = null
     private var rightPaceTextView: TextView? = null
     private var rightPaceUnitTextView: TextView? = null
-
-    // Long-press debug overlay view showing DisplayCutout & Dynamic Island metrics
-    private var debugOverlayView: View? = null
-    private var debugInfoTextView: TextView? = null
     private var lastOverlayOpenRequestMs: Long = 0L
 
     override fun onCreate() {
@@ -129,11 +124,6 @@ class BleForegroundService : Service() {
                 updateDynamicIslandOverlay()
             }
             ACTION_REFRESH_OVERLAY -> {
-                updateDynamicIslandOverlay()
-            }
-            ACTION_TOGGLE_DEBUG -> {
-                SpeedStateManager.toggleIslandDebug()
-                updateNotification()
                 updateDynamicIslandOverlay()
             }
             ACTION_START, null -> {
@@ -211,22 +201,6 @@ class BleForegroundService : Service() {
                     applyCutoutPositionAndSize()
                 }
             }
-            launch {
-                SpeedStateManager.isIslandDebugEnabled.collect {
-                    updateNotification()
-                    updateDynamicIslandOverlay()
-                }
-            }
-            launch {
-                SpeedStateManager.islandYDeltaPx.collect {
-                    applyCutoutPositionAndSize()
-                }
-            }
-            launch {
-                SpeedStateManager.islandHeightDeltaPx.collect {
-                    applyCutoutPositionAndSize()
-                }
-            }
         }
     }
 
@@ -238,39 +212,15 @@ class BleForegroundService : Service() {
         ).roundToInt()
     }
 
-    private fun pxToDpStr(px: Int): String {
-        val density = resources.displayMetrics.density.coerceAtLeast(1f)
-        return String.format(Locale.US, "%.1f", px / density)
-    }
-
-    private fun getScreenWidthPx(): Int {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            windowManager?.currentWindowMetrics?.bounds?.width()
-                ?: resources.displayMetrics.widthPixels
-        } else {
-            resources.displayMetrics.widthPixels
-        }
-    }
-
-    private fun getScreenHeightPx(): Int {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            windowManager?.currentWindowMetrics?.bounds?.height()
-                ?: resources.displayMetrics.heightPixels
-        } else {
-            resources.displayMetrics.heightPixels
-        }
-    }
-
     private fun canShowDynamicIsland(): Boolean {
         val hasOverlayPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Settings.canDrawOverlays(this)
         } else {
             true
         }
-        // Show when minimized while broadcasting, OR while in-app if Island Debug mode is active
         return hasOverlayPermission &&
             SpeedStateManager.isAdvertising.value &&
-            (!SpeedStateManager.isAppInForeground.value || SpeedStateManager.isIslandDebugEnabled.value)
+            !SpeedStateManager.isAppInForeground.value
     }
 
     private fun resolveSystemDisplayCutout(): android.view.DisplayCutout? {
@@ -312,20 +262,6 @@ class BleForegroundService : Service() {
         return SpeedStateManager.cameraCutoutPathBounds.value
     }
 
-    private fun getUserYDeltaPx(): Int {
-        return SpeedStateManager.islandYDeltaPx.value
-    }
-
-    private fun getUserHeightDeltaPx(): Int {
-        return SpeedStateManager.islandHeightDeltaPx.value
-    }
-
-    private fun adjustUserIslandMetrics(dY: Int, dH: Int, reset: Boolean = false) {
-        SpeedStateManager.adjustIslandMetrics(dY, dH, reset, this)
-        applyCutoutPositionAndSize()
-        refreshDebugOverlayText()
-    }
-
     /**
      * Computes density-independent Dynamic Island geometry from DisplayCutout metrics.
      */
@@ -336,9 +272,7 @@ class BleForegroundService : Service() {
         return DynamicIslandGeometry.compute(
             holeRect = holeRect,
             cutoutPathBounds = cutoutPathBounds,
-            density = resources.displayMetrics.density,
-            userYDeltaPx = getUserYDeltaPx(),
-            userHeightDeltaPx = getUserHeightDeltaPx()
+            density = resources.displayMetrics.density
         )
     }
 
@@ -516,238 +450,6 @@ class BleForegroundService : Service() {
                 } catch (_: Exception) {}
             }
         }
-
-        refreshDebugOverlayText()
-    }
-
-    private fun buildDebugInfoString(): String {
-        val holeRect = resolveCameraCutoutRect()
-        val pathBounds = resolveCameraCutoutPathBounds()
-        val sysCutout = resolveSystemDisplayCutout()
-        val metrics = computeIslandMetrics(holeRect, pathBounds)
-        val pillHeightPx = metrics.pillHeightPx
-        val spacerWidthPx = metrics.spacerWidthPx
-        val targetY = metrics.targetY
-
-        val leftW = leftWingView?.layoutParams?.width ?: leftWingView?.measuredWidth ?: 0
-        val totalWidth = (dpToPx(8) * 2) + (leftW * 2) + spacerWidthPx
-
-        val density = resources.displayMetrics.density
-        val screenW = getScreenWidthPx()
-        val screenH = getScreenHeightPx()
-
-        val cutoutRectStr = if (holeRect != null) {
-            "L=${holeRect.left}, T=${holeRect.top}, R=${holeRect.right}, B=${holeRect.bottom}\n" +
-                "  size=${holeRect.width()}x${holeRect.height()}px, center=(${holeRect.centerX()}, ${holeRect.centerY()})\n" +
-                "  estLensTop=${metrics.estLensTopPx ?: (holeRect.bottom - holeRect.width())}px, estLensCenterY=${metrics.estLensCenterYPx ?: (holeRect.bottom - holeRect.width() / 2)}px"
-        } else {
-            "null (fallback used)"
-        }
-
-        val pathStr = if (pathBounds != null) {
-            "L=${pathBounds.left}, T=${pathBounds.top}, R=${pathBounds.right}, B=${pathBounds.bottom} (${pathBounds.width()}x${pathBounds.height()}px)"
-        } else {
-            "N/A"
-        }
-
-        val safeInsetsStr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
-            "T=${sysCutout.safeInsetTop}px, B=${sysCutout.safeInsetBottom}px, L=${sysCutout.safeInsetLeft}px, R=${sysCutout.safeInsetRight}px"
-        } else {
-            "N/A"
-        }
-
-        val allRectsCount = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
-            sysCutout.boundingRects.size
-        } else {
-            if (holeRect != null) 1 else 0
-        }
-
-        return buildString {
-            append("DISPLAY CUTOUT (rects=$allRectsCount):\n")
-            append("  $cutoutRectStr\n")
-            append("  pathBounds: $pathStr\n")
-            append("  safeInsets: $safeInsetsStr\n")
-            append("  screen: ${screenW}x${screenH}px (${String.format(Locale.US, "%.2f", density)}x)\n\n")
-            append("DYNAMIC ISLAND OVERLAY [${metrics.mode.label}]:\n")
-            append("  top (y): $targetY px (${pxToDpStr(targetY)} dp) [adj=${getUserYDeltaPx()}px]\n")
-            append("  height:  $pillHeightPx px (${pxToDpStr(pillHeightPx)} dp) [adj=${getUserHeightDeltaPx()}px]\n")
-            append("  bottom:  ${targetY + pillHeightPx} px (centerY=${targetY + pillHeightPx / 2} px)\n")
-            append("  width:   $totalWidth px (wing=${leftW}px, gap=${spacerWidthPx}px)")
-        }
-    }
-
-    private fun refreshDebugOverlayText() {
-        debugInfoTextView?.text = buildDebugInfoString()
-    }
-
-    private fun toggleDebugOverlay() {
-        val next = debugOverlayView == null
-        SpeedStateManager.setIslandDebugEnabled(next)
-        if (next) {
-            showDebugOverlay()
-        } else {
-            removeDebugOverlay()
-        }
-    }
-
-    private fun createDebugActionButton(label: String, bgColor: String = "#222527", textColor: String = "#FFFFFF", onClick: () -> Unit): TextView {
-        return TextView(this).apply {
-            text = label
-            setTextColor(Color.parseColor(textColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dpToPx(6).toFloat()
-                setColor(Color.parseColor(bgColor))
-                setStroke(dpToPx(1), Color.parseColor("#3E4448"))
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            ).apply {
-                marginEnd = dpToPx(4)
-            }
-            setOnClickListener { onClick() }
-        }
-    }
-
-    private fun showDebugOverlay() {
-        val wm = windowManager ?: return
-        if (debugOverlayView != null) return
-
-        val holeRect = resolveCameraCutoutRect()
-        val metrics = computeIslandMetrics(holeRect)
-        val pillHeightPx = metrics.pillHeightPx
-        val targetY = metrics.targetY
-
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dpToPx(14).toFloat()
-                setColor(Color.parseColor("#F2111315"))
-                setStroke(dpToPx(1), Color.parseColor("#4ADE80"))
-            }
-        }
-
-        val titleTv = TextView(this).apply {
-            text = "DYNAMIC ISLAND & CUTOUT DEBUG"
-            setTextColor(Color.parseColor("#4ADE80"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            setPadding(0, 0, 0, dpToPx(6))
-        }
-
-        val infoTv = TextView(this).apply {
-            text = buildDebugInfoString()
-            setTextColor(Color.parseColor("#E5E7EB"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
-            setPadding(0, 0, 0, dpToPx(8))
-        }
-
-        // Row 1: Live Top Y and Height pixel nudges
-        val nudgeRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = dpToPx(6)
-            }
-        }
-        nudgeRow.addView(createDebugActionButton("Y -1px") { adjustUserIslandMetrics(-1, 0) })
-        nudgeRow.addView(createDebugActionButton("Y +1px") { adjustUserIslandMetrics(+1, 0) })
-        nudgeRow.addView(createDebugActionButton("H -2px") { adjustUserIslandMetrics(0, -2) })
-        nudgeRow.addView(createDebugActionButton("H +2px") { adjustUserIslandMetrics(0, +2) })
-
-        // Row 2: Open App, Reset & Close buttons
-        val actionRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        actionRow.addView(createDebugActionButton("Open App", "#2563EB", "#FFFFFF") {
-            SpeedStateManager.setIslandDebugEnabled(false)
-            removeDebugOverlay()
-            openMainAppFromOverlay()
-        })
-        actionRow.addView(createDebugActionButton("Reset", "#2A2E33", "#FCD34D") {
-            adjustUserIslandMetrics(0, 0, reset = true)
-        })
-        actionRow.addView(createDebugActionButton("Close", "#16A34A", "#FFFFFF") {
-            SpeedStateManager.setIslandDebugEnabled(false)
-            removeDebugOverlay()
-        })
-
-        card.addView(titleTv)
-        card.addView(infoTv)
-        card.addView(nudgeRow)
-        card.addView(actionRow)
-
-        val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
-
-        // Guarantee debug card sits below safeInsetTop (status bar touch-intercept zone) so all buttons receive touches
-        val sysCutout = resolveSystemDisplayCutout()
-        val safeTop = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
-            sysCutout.safeInsetTop
-        } else {
-            holeRect?.bottom ?: dpToPx(44)
-        }
-        val safeDebugY = maxOf(safeTop + dpToPx(8), targetY + pillHeightPx + dpToPx(10), dpToPx(48))
-
-        val debugParams = WindowManager.LayoutParams(
-            dpToPx(330),
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            overlayType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            x = 0
-            y = safeDebugY
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-        }
-
-        try {
-            wm.addView(card, debugParams)
-            debugOverlayView = card
-            debugInfoTextView = infoTv
-        } catch (_: Exception) {
-            debugOverlayView = null
-            debugInfoTextView = null
-        }
-    }
-
-    private fun removeDebugOverlay() {
-        val view = debugOverlayView ?: return
-        try {
-            windowManager?.removeView(view)
-        } catch (_: Exception) {}
-        debugOverlayView = null
-        debugInfoTextView = null
     }
 
     private fun updateDynamicIslandOverlay() {
@@ -778,13 +480,6 @@ class BleForegroundService : Service() {
         }
 
         applyCutoutPositionAndSize()
-
-        if (SpeedStateManager.isIslandDebugEnabled.value && !SpeedStateManager.isAppInForeground.value) {
-            showDebugOverlay()
-            refreshDebugOverlayText()
-        } else {
-            removeDebugOverlay()
-        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -1009,7 +704,6 @@ class BleForegroundService : Service() {
     }
 
     private fun removeDynamicIslandOverlay() {
-        removeDebugOverlay()
         val view = dynamicIslandView ?: return
         try {
             windowManager?.removeView(view)
@@ -1097,25 +791,6 @@ class BleForegroundService : Service() {
                     swapPendingIntent
                 ).build()
             )
-
-        if (SpeedStateManager.isIslandDebugEnabled.value) {
-            val debugIntent = Intent(this, BleForegroundService::class.java).apply {
-                action = ACTION_TOGGLE_DEBUG
-            }
-            val debugPendingIntent = PendingIntent.getService(
-                this,
-                2,
-                debugIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            builder.addAction(
-                NotificationCompat.Action.Builder(
-                    R.drawable.ic_launcher_foreground,
-                    "Hide Debug",
-                    debugPendingIntent
-                ).build()
-            )
-        }
 
         return builder.build()
     }

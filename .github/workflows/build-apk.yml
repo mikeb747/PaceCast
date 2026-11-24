@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build Debug APK
+    name: Build Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -32,14 +32,14 @@ jobs:
       - name: Make Gradle Wrapper Executable
         run: chmod +x android/gradlew
 
-      - name: Build Android APK with Gradle
+      - name: Build Optimized Release APK with Gradle
         run: |
           cd android
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleRelease --stacktrace
 
-      - name: Upload Debug APK Artifact
+      - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PaceCast-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: PaceCast-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error

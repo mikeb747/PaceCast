@@ -34,11 +34,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
@@ -60,8 +58,14 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 private const val KMH_TO_MPH = 0.621371192f
+private const val MPH_TO_KMH = 1.609344f
 
 private fun kmhToMph(kmh: Float): Float = kmh * KMH_TO_MPH
+private fun mphToKmh(mph: Float): Float = mph * MPH_TO_KMH
+private fun roundToTenth(v: Float): Float = (v * 10f).roundToInt() / 10f
+private fun getDisplayPresetSpeed(presetKmh: Float, unitSystem: String): Float {
+    return if (unitSystem == "imperial") roundToTenth(kmhToMph(presetKmh)) else roundToTenth(presetKmh)
+}
 
 private fun formatPaceKm(speedKmh: Float): String {
     if (speedKmh <= 0f) return "--:--"
@@ -162,7 +166,13 @@ fun PaceCastScreen(
             isAdjustmentBurstActive = false
         }
 
-        val next = ((currentSpeed + delta) * 10f).roundToInt() / 10f
+        val next = if (unitSystem == "imperial") {
+            val currentMph = roundToTenth(kmhToMph(currentSpeed))
+            val targetMph = roundToTenth(currentMph + delta).coerceAtLeast(0.0f)
+            roundToTenth(mphToKmh(targetMph))
+        } else {
+            roundToTenth(currentSpeed + delta)
+        }
         com.pacecast.app.ble.SpeedStateManager.updateSpeedDirectly(next.coerceIn(0.0f, 30.0f), context)
     }
 
@@ -182,15 +192,26 @@ fun PaceCastScreen(
 
     fun openPresetEditor(index: Int) {
         editingPresetIndex = index
-        presetEditBuffer = String.format(Locale.US, "%.1f", presets[index])
+        val displayVal = getDisplayPresetSpeed(presets[index], unitSystem)
+        presetEditBuffer = String.format(Locale.US, "%.1f", displayVal)
     }
 
     fun savePresetEdit() {
         val index = editingPresetIndex ?: return
         val parsed = presetEditBuffer.toFloatOrNull() ?: return
-        val clamped = ((parsed * 10f).roundToInt() / 10f).coerceIn(0.0f, 24.0f)
+        val clampedKmh = if (unitSystem == "imperial") {
+            val existingKmh = presets[index]
+            val existingMph = getDisplayPresetSpeed(existingKmh, "imperial")
+            if (Math.abs(existingMph - roundToTenth(parsed)) < 0.001f) {
+                existingKmh
+            } else {
+                roundToTenth(mphToKmh(roundToTenth(parsed))).coerceIn(0.0f, 24.0f)
+            }
+        } else {
+            roundToTenth(parsed).coerceIn(0.0f, 24.0f)
+        }
         val updated = presets.toMutableList()
-        updated[index] = clamped
+        updated[index] = clampedKmh
         presets = updated
         prefs.edit().putString("presets_csv", updated.joinToString(",")).apply()
         editingPresetIndex = null
@@ -208,9 +229,10 @@ fun PaceCastScreen(
         if (key == "." && presetEditBuffer.contains(".")) return
         if (presetEditBuffer.contains(".") && presetEditBuffer.substringAfter(".").length >= 1) return
 
+        val maxPresetInUnit = if (unitSystem == "metric") 24.0f else roundToTenth(kmhToMph(24.0f))
         val candidate = if (presetEditBuffer == "0" && key != ".") key else presetEditBuffer + key
         val num = candidate.toFloatOrNull()
-        if (num != null && num > 24.0f) return
+        if (num != null && num > maxPresetInUnit) return
         if (candidate.length <= 4) {
             presetEditBuffer = candidate
         }
@@ -222,7 +244,8 @@ fun PaceCastScreen(
 
         val parsed = keypadBuffer.toFloatOrNull()
         if (parsed != null) {
-            val clamped = ((parsed * 10f).roundToInt() / 10f).coerceIn(0.0f, 30.0f)
+            val speedKmh = if (unitSystem == "metric") parsed else mphToKmh(parsed)
+            val clamped = roundToTenth(speedKmh).coerceIn(0.0f, 30.0f)
             com.pacecast.app.ble.SpeedStateManager.setSpeed(clamped, context)
         }
         keypadBuffer = ""
@@ -239,9 +262,10 @@ fun PaceCastScreen(
         if (key == "." && keypadBuffer.contains(".")) return
         if (keypadBuffer.contains(".") && keypadBuffer.substringAfter(".").length >= 1) return
 
+        val maxSpeedInUnit = if (unitSystem == "metric") 30.0f else roundToTenth(kmhToMph(30.0f))
         val candidate = if (keypadBuffer == "0" && key != ".") key else keypadBuffer + key
         val num = candidate.toFloatOrNull()
-        if (num != null && num > 30.0f) return
+        if (num != null && num > maxSpeedInUnit) return
         if (candidate.length <= 4) {
             keypadBuffer = candidate
         }
@@ -262,20 +286,10 @@ fun PaceCastScreen(
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Header with status pill and Island Debug toggle (confirmation dialog on turn-off)
-            val isIslandDebugEnabled by com.pacecast.app.ble.SpeedStateManager.isIslandDebugEnabled.collectAsState()
+            // Header with status pill (confirmation dialog on turn-off)
             HeaderSection(
                 isAdvertising = isAdvertising,
                 deviceCount = deviceCount,
-                isIslandDebugEnabled = isIslandDebugEnabled,
-                onToggleDebug = {
-                    val nextDebug = !isIslandDebugEnabled
-                    com.pacecast.app.ble.SpeedStateManager.setIslandDebugEnabled(nextDebug)
-                    if (nextDebug && !isAdvertising) {
-                        onToggleAdvertising()
-                    }
-                    com.pacecast.app.ble.BleForegroundService.refreshOverlay(context)
-                },
                 onToggle = {
                     if (isAdvertising) {
                         showStopBroadcastingDialog = true
@@ -284,24 +298,6 @@ fun PaceCastScreen(
                     }
                 }
             )
-
-            // In-App DisplayCutout & Dynamic Island Calibration Card (also stays visible as floating overlay when minimized)
-            if (isIslandDebugEnabled) {
-                IslandCutoutDebugCard(
-                    canDrawOverlays = canDrawOverlays,
-                    onRequestOverlayPermission = {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}")
-                        )
-                        context.startActivity(intent)
-                    },
-                    onClose = {
-                        com.pacecast.app.ble.SpeedStateManager.setIslandDebugEnabled(false)
-                        com.pacecast.app.ble.BleForegroundService.refreshOverlay(context)
-                    }
-                )
-            }
 
             // Prompt to enable Dynamic Island overlay permission if not granted yet
             if (isAdvertising && !canDrawOverlays) {
@@ -333,6 +329,7 @@ fun PaceCastScreen(
             PresetsSection(
                 currentSpeed = currentSpeed,
                 presets = presets,
+                unitSystem = unitSystem,
                 onSelectPreset = { preset -> selectPreset(preset) },
                 onLongPressPreset = { index -> openPresetEditor(index) }
             )
@@ -444,7 +441,11 @@ fun PaceCastScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Enter speed 0.0 – 24.0 km/h (0.1 increments)",
+                                    text = if (unitSystem == "metric") {
+                                        "Enter speed 0.0 – 24.0 km/h (0.1 increments)"
+                                    } else {
+                                        "Enter speed 0.0 – 14.9 mph (0.1 increments)"
+                                    },
                                     color = TextSecondary,
                                     fontSize = 12.sp
                                 )
@@ -492,7 +493,7 @@ fun PaceCastScreen(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "km/h",
+                                            text = if (unitSystem == "metric") "km/h" else "mph",
                                             color = TextSecondary,
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.SemiBold,
@@ -507,12 +508,13 @@ fun PaceCastScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            val maxPresetInUnit = if (unitSystem == "metric") 24.0f else roundToTenth(kmhToMph(24.0f))
                             listOf(-0.5f, -0.1f, 0.1f, 0.5f).forEach { delta ->
                                 OutlinedButton(
                                     onClick = {
                                         val cur = presetEditBuffer.toFloatOrNull() ?: 0f
-                                        val next = ((cur + delta) * 10f).roundToInt() / 10f
-                                        presetEditBuffer = String.format(Locale.US, "%.1f", next.coerceIn(0.0f, 24.0f))
+                                        val next = roundToTenth(cur + delta)
+                                        presetEditBuffer = String.format(Locale.US, "%.1f", next.coerceIn(0.0f, maxPresetInUnit))
                                     },
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
@@ -593,8 +595,6 @@ fun PaceCastScreen(
 private fun HeaderSection(
     isAdvertising: Boolean,
     deviceCount: Int,
-    isIslandDebugEnabled: Boolean,
-    onToggleDebug: () -> Unit,
     onToggle: () -> Unit
 ) {
     val context = LocalContext.current
@@ -642,7 +642,6 @@ private fun HeaderSection(
         }
     }
 
-    val haptic = LocalHapticFeedback.current
     val view = LocalView.current
     val baseDensity = LocalDensity.current
     val savedCutoutRect by com.pacecast.app.ble.SpeedStateManager.cameraCutoutRect.collectAsState()
@@ -688,15 +687,6 @@ private fun HeaderSection(
                     .then(
                         if (headerMetrics.hasCenteredCutout) Modifier.widthIn(max = wingMaxDp) else Modifier
                     )
-                    .clip(RoundedCornerShape((8f * s).dp))
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onLongPress = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onToggleDebug()
-                            }
-                        )
-                    }
                     .padding(end = (4f * s).dp),
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy((10f * s).dp)
@@ -750,33 +740,6 @@ private fun HeaderSection(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy((8f * s).dp)
             ) {
-                // DBG badge only shown when enabled via long-pressing on the PaceCast text
-                if (isIslandDebugEnabled) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape((14f * s).dp))
-                            .background(MintGreen.copy(alpha = 0.2f))
-                            .border(
-                                width = 1.dp,
-                                color = MintGreen,
-                                shape = RoundedCornerShape((14f * s).dp)
-                            )
-                            .clickable { onToggleDebug() }
-                            .padding(horizontal = (7f * s).dp, vertical = (5f * s).dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "DBG",
-                            color = MintGreen,
-                            fontSize = (11f * s).sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape((20f * s).dp))
@@ -818,232 +781,6 @@ private fun HeaderSection(
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Clip
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun IslandCutoutDebugCard(
-    canDrawOverlays: Boolean,
-    onRequestOverlayPermission: () -> Unit,
-    onClose: () -> Unit
-) {
-    val context = LocalContext.current
-    val view = LocalView.current
-    val cutoutRect by com.pacecast.app.ble.SpeedStateManager.cameraCutoutRect.collectAsState()
-    val cutoutPathBounds by com.pacecast.app.ble.SpeedStateManager.cameraCutoutPathBounds.collectAsState()
-    val userYDelta by com.pacecast.app.ble.SpeedStateManager.islandYDeltaPx.collectAsState()
-    val userHDelta by com.pacecast.app.ble.SpeedStateManager.islandHeightDeltaPx.collectAsState()
-
-    val dm = context.resources.displayMetrics
-    val density = dm.density.coerceAtLeast(1f)
-    val sysCutout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        view.rootWindowInsets?.displayCutout
-    } else {
-        null
-    }
-
-    val activeRect = remember(cutoutRect, sysCutout) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
-            sysCutout.boundingRects.filter { !it.isEmpty }.minByOrNull { it.top } ?: cutoutRect
-        } else {
-            cutoutRect
-        }
-    }
-
-    val activePathBounds = remember(cutoutPathBounds, sysCutout) {
-        com.pacecast.app.ble.DynamicIslandGeometry.extractCutoutPathBounds(sysCutout) ?: cutoutPathBounds
-    }
-
-    val metrics = remember(activeRect, activePathBounds, density, userYDelta, userHDelta) {
-        com.pacecast.app.ble.DynamicIslandGeometry.compute(
-            holeRect = activeRect,
-            cutoutPathBounds = activePathBounds,
-            density = density,
-            userYDeltaPx = userYDelta,
-            userHeightDeltaPx = userHDelta
-        )
-    }
-
-    val pillHeightPx = metrics.pillHeightPx
-    val targetY = metrics.targetY
-
-    val safeInsetsStr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
-        "T=${sysCutout.safeInsetTop}px, B=${sysCutout.safeInsetBottom}px, L=${sysCutout.safeInsetLeft}px, R=${sysCutout.safeInsetRight}px"
-    } else {
-        "N/A"
-    }
-
-    val rectStr = if (activeRect != null) {
-        "L=${activeRect.left}, T=${activeRect.top}, R=${activeRect.right}, B=${activeRect.bottom}\n" +
-            "  size=${activeRect.width()}x${activeRect.height()}px, center=(${activeRect.centerX()}, ${activeRect.centerY()})\n" +
-            "  estLensTop=${metrics.estLensTopPx ?: (activeRect.bottom - activeRect.width())}px, estLensCenterY=${metrics.estLensCenterYPx ?: (activeRect.bottom - activeRect.width() / 2)}px"
-    } else {
-        "null (fallback used)"
-    }
-
-    val pathStr = if (activePathBounds != null) {
-        "L=${activePathBounds.left}, T=${activePathBounds.top}, R=${activePathBounds.right}, B=${activePathBounds.bottom} (${activePathBounds.width()}x${activePathBounds.height()}px)"
-    } else {
-        "N/A"
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF111315))
-            .border(1.dp, MintGreen, RoundedCornerShape(12.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "DYNAMIC ISLAND & CUTOUT DEBUG",
-                color = MintGreen,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "✕",
-                color = TextSecondary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clickable { onClose() }
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            )
-        }
-
-        Text(
-            text = buildString {
-                append("DISPLAY CUTOUT:\n")
-                append("  $rectStr\n")
-                append("  pathBounds: $pathStr\n")
-                append("  safeInsets: $safeInsetsStr\n")
-                append("  screen: ${dm.widthPixels}x${dm.heightPixels}px (${String.format(Locale.US, "%.2f", density)}x)\n")
-                append("DYNAMIC ISLAND OVERLAY [${metrics.mode.label}]:\n")
-                append("  top (y): $targetY px (${String.format(Locale.US, "%.1f", targetY / density)} dp) [adj=${userYDelta}px]\n")
-                append("  height:  $pillHeightPx px (${String.format(Locale.US, "%.1f", pillHeightPx / density)} dp) [adj=${userHDelta}px]\n")
-                append("  bottom:  ${targetY + pillHeightPx} px (centerY=${targetY + pillHeightPx / 2} px)")
-            },
-            color = TextPrimary,
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace,
-            lineHeight = 15.sp
-        )
-
-        if (!canDrawOverlays) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF064E3B))
-                    .clickable { onRequestOverlayPermission() }
-                    .padding(vertical = 6.dp, horizontal = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Grant 'Display over other apps' to view Floating Island",
-                    color = MintGreen,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            listOf(
-                "Y -1px" to (-1 to 0),
-                "Y +1px" to (1 to 0),
-                "H -2px" to (0 to -2),
-                "H +2px" to (0 to 2)
-            ).forEach { (label, delta) ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(CharcoalSurface)
-                        .border(1.dp, CharcoalBorder, RoundedCornerShape(6.dp))
-                        .clickable {
-                            com.pacecast.app.ble.SpeedStateManager.adjustIslandMetrics(
-                                dY = delta.first,
-                                dH = delta.second,
-                                reset = false,
-                                context = context
-                            )
-                            com.pacecast.app.ble.BleForegroundService.refreshOverlay(context)
-                        }
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = label,
-                        color = MintGreen,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(CharcoalSurface)
-                    .border(1.dp, CharcoalBorder, RoundedCornerShape(6.dp))
-                    .clickable {
-                        com.pacecast.app.ble.SpeedStateManager.adjustIslandMetrics(
-                            dY = 0,
-                            dH = 0,
-                            reset = true,
-                            context = context
-                        )
-                        com.pacecast.app.ble.BleForegroundService.refreshOverlay(context)
-                    }
-                    .padding(vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Reset",
-                    color = Color(0xFFFCD34D),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF16A34A))
-                    .clickable { onClose() }
-                    .padding(vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Close Debug",
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
                 )
             }
         }
@@ -1379,6 +1116,7 @@ private fun FlushPlusButton(
 private fun PresetsSection(
     currentSpeed: Float,
     presets: List<Float>,
+    unitSystem: String,
     onSelectPreset: (Float) -> Unit,
     onLongPressPreset: (Int) -> Unit
 ) {
@@ -1413,9 +1151,14 @@ private fun PresetsSection(
             horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             presets.forEachIndexed { index, preset ->
-                val isSelected = Math.abs(currentSpeed - preset) < 0.05f
+                val displayPreset = getDisplayPresetSpeed(preset, unitSystem)
+                val isSelected = if (unitSystem == "metric") {
+                    Math.abs(currentSpeed - preset) < 0.05f
+                } else {
+                    Math.abs(roundToTenth(kmhToMph(currentSpeed)) - displayPreset) < 0.05f
+                }
                 PresetButton(
-                    preset = preset,
+                    displayPreset = displayPreset,
                     isSelected = isSelected,
                     modifier = Modifier.weight(1f),
                     onClick = { onSelectPreset(preset) },
@@ -1428,7 +1171,7 @@ private fun PresetsSection(
 
 @Composable
 private fun PresetButton(
-    preset: Float,
+    displayPreset: Float,
     isSelected: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
@@ -1436,7 +1179,7 @@ private fun PresetButton(
 ) {
     var isPressed by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
-    val label = if (preset % 1f == 0f) String.format(Locale.US, "%.0f", preset) else String.format(Locale.US, "%.1f", preset)
+    val label = if (displayPreset % 1f == 0f) String.format(Locale.US, "%.0f", displayPreset) else String.format(Locale.US, "%.1f", displayPreset)
 
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
@@ -1449,7 +1192,7 @@ private fun PresetButton(
             .padding(bottom = if (isPressed) 1.dp else 3.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(if (isSelected) MintGreen else CharcoalSurface)
-            .pointerInput(preset) {
+            .pointerInput(displayPreset) {
                 detectTapGestures(
                     onPress = {
                         isPressed = true

@@ -12,6 +12,10 @@ import {
   formatPace,
   formatPaceMile,
   kmhToMph,
+  mphToKmh,
+  roundToTenth,
+  getDisplayPresetSpeed,
+  formatPresetSpeed,
   PaceTransitionManager,
   MIN_SPEED_KMH,
   MAX_SPEED_KMH,
@@ -35,15 +39,21 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   isBroadcasting,
   onToggleBroadcasting,
 }) => {
-  // Speed states
+  // Speed states (persisted in localStorage across page refreshes)
   const [speed, setSpeed] = useState<number>(() => {
     const saved = localStorage.getItem('pacecast-speed');
-    return saved ? clampSpeed(Number(saved)) : DEFAULT_SPEED_KMH;
+    if (saved !== null && saved !== '' && Number.isFinite(Number(saved))) {
+      return clampSpeed(Number(saved));
+    }
+    return DEFAULT_SPEED_KMH;
   });
 
   const [previousSpeed, setPreviousSpeed] = useState<number>(() => {
     const saved = localStorage.getItem('pacecast-previous-speed');
-    return saved ? clampSpeed(Number(saved)) : DEFAULT_PREVIOUS_SPEED_KMH;
+    if (saved !== null && saved !== '' && Number.isFinite(Number(saved))) {
+      return clampSpeed(Number(saved));
+    }
+    return DEFAULT_PREVIOUS_SPEED_KMH;
   });
 
   const [keypadValue, setKeypadValue] = useState<string>('');
@@ -102,15 +112,22 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   // Unit System state ('metric' km/h & /km <-> 'imperial' mph & /mi)
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => {
     const saved = localStorage.getItem('pacecast-unit-system');
-    return (saved as UnitSystem) || 'metric';
+    return saved === 'imperial' || saved === 'metric' ? saved : 'metric';
   });
 
+  const unitSystemRef = useRef<UnitSystem>(unitSystem);
   useEffect(() => {
+    unitSystemRef.current = unitSystem;
     localStorage.setItem('pacecast-unit-system', unitSystem);
   }, [unitSystem]);
 
   const toggleUnitSystem = () => {
-    setUnitSystem((prev) => (prev === 'metric' ? 'imperial' : 'metric'));
+    setUnitSystem((prev) => {
+      const next = prev === 'metric' ? 'imperial' : 'metric';
+      unitSystemRef.current = next;
+      localStorage.setItem('pacecast-unit-system', next);
+      return next;
+    });
   };
 
   // Dynamic 6 Presets (stored in localStorage)
@@ -180,12 +197,22 @@ export const PaceController: React.FC<PaceControllerProps> = ({
 
   function openEditPreset(index: number) {
     setEditingPresetIndex(index);
-    setPresetEditBuffer(presetsRef.current[index].toFixed(1));
+    const displayVal = getDisplayPresetSpeed(
+      presetsRef.current[index],
+      unitSystemRef.current
+    );
+    setPresetEditBuffer(displayVal.toFixed(1));
   }
 
   function closeEditPreset() {
     setEditingPresetIndex(null);
     setPresetEditBuffer('');
+  }
+
+  function getMaxPresetInActiveUnit(): number {
+    return unitSystemRef.current === 'metric'
+      ? MAX_PRESET_SPEED_KMH
+      : roundToTenth(kmhToMph(MAX_PRESET_SPEED_KMH));
   }
 
   function handlePresetKeypadPress(key: string) {
@@ -194,13 +221,14 @@ export const PaceController: React.FC<PaceControllerProps> = ({
       return;
     }
 
+    const maxAllowed = getMaxPresetInActiveUnit();
     setPresetEditBuffer((current) => {
       if (key === '.' && current.includes('.')) return current;
       if (current.includes('.') && current.split('.')[1].length >= 1) return current;
 
       const next = current === '0' && key !== '.' ? key : current + key;
       const num = Number(next);
-      if (Number.isFinite(num) && num > MAX_PRESET_SPEED_KMH) {
+      if (Number.isFinite(num) && num > maxAllowed) {
         return current;
       }
       return next.slice(0, 4);
@@ -209,7 +237,8 @@ export const PaceController: React.FC<PaceControllerProps> = ({
 
   function handlePresetNudge(delta: number) {
     const current = Number(presetEditBuffer) || 0;
-    const next = clampPresetSpeed(current + delta);
+    const maxAllowed = getMaxPresetInActiveUnit();
+    const next = Math.min(Math.max(roundToTenth(current + delta), 0), maxAllowed);
     setPresetEditBuffer(next.toFixed(1));
   }
 
@@ -217,10 +246,22 @@ export const PaceController: React.FC<PaceControllerProps> = ({
     if (editingPresetIndex === null) return;
     const num = Number(presetEditBuffer);
     if (!Number.isFinite(num)) return;
-    const clamped = clampPresetSpeed(num);
+
+    let clampedKmh: number;
+    if (unitSystemRef.current === 'imperial') {
+      const existingKmh = presetsRef.current[editingPresetIndex];
+      const existingMph = getDisplayPresetSpeed(existingKmh, 'imperial');
+      if (Math.abs(existingMph - roundToTenth(num)) < 1e-6) {
+        clampedKmh = existingKmh;
+      } else {
+        clampedKmh = clampPresetSpeed(mphToKmh(roundToTenth(num)));
+      }
+    } else {
+      clampedKmh = clampPresetSpeed(num);
+    }
 
     const updated = [...presetsRef.current];
-    updated[editingPresetIndex] = clamped;
+    updated[editingPresetIndex] = clampedKmh;
     presetsRef.current = updated;
     setPresets(updated);
     localStorage.setItem('pacecast-presets', JSON.stringify(updated));
@@ -237,6 +278,8 @@ export const PaceController: React.FC<PaceControllerProps> = ({
       (current, prev) => {
         setSpeed(current);
         setPreviousSpeed(prev);
+        localStorage.setItem('pacecast-speed', current.toFixed(1));
+        localStorage.setItem('pacecast-previous-speed', prev.toFixed(1));
       }
     );
   }
@@ -271,21 +314,28 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   function startHold(direction: -1 | 1) {
     stopHold();
     setKeypadValue('');
-    const res = transitionManagerRef.current?.adjustBy(direction * 0.1);
+    const activeUnit = unitSystemRef.current;
+    const res = transitionManagerRef.current?.adjustBy(direction * 0.1, activeUnit);
     if (res) {
       setSpeed(res.current);
       setPreviousSpeed(res.previous);
     }
 
     holdTimeout.current = window.setTimeout(() => {
-      const resTick = transitionManagerRef.current?.adjustBy(direction * 0.5);
+      const resTick = transitionManagerRef.current?.adjustBy(
+        direction * 0.5,
+        unitSystemRef.current
+      );
       if (resTick) {
         setSpeed(resTick.current);
         setPreviousSpeed(resTick.previous);
       }
 
       holdInterval.current = window.setInterval(() => {
-        const resInterval = transitionManagerRef.current?.adjustBy(direction * 0.5);
+        const resInterval = transitionManagerRef.current?.adjustBy(
+          direction * 0.5,
+          unitSystemRef.current
+        );
         if (resInterval) {
           setSpeed(resInterval.current);
           setPreviousSpeed(resInterval.previous);
@@ -300,12 +350,17 @@ export const PaceController: React.FC<PaceControllerProps> = ({
       return;
     }
 
+    const maxSpeedInUnit =
+      unitSystemRef.current === 'metric'
+        ? MAX_SPEED_KMH
+        : roundToTenth(kmhToMph(MAX_SPEED_KMH));
+
     setKeypadValue((current) => {
       if (key === '.' && current.includes('.')) return current;
       if (current.includes('.') && current.split('.')[1].length >= 1) return current;
       const next = current === '0' && key !== '.' ? key : current + key;
       const numeric = Number(next);
-      if (Number.isFinite(numeric) && numeric > MAX_SPEED_KMH) return current;
+      if (Number.isFinite(numeric) && numeric > maxSpeedInUnit) return current;
       return next.slice(0, 4);
     });
   }
@@ -313,7 +368,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
   function applyKeypad() {
     const parsed = Number(keypadValue);
     if (!Number.isFinite(parsed) || keypadValue === '') return;
-    const res = transitionManagerRef.current?.submitExact(parsed);
+    const targetSpeedKmh =
+      unitSystemRef.current === 'metric' ? parsed : mphToKmh(parsed);
+    const res = transitionManagerRef.current?.submitExact(targetSpeedKmh);
     if (res) {
       setSpeed(res.current);
       setPreviousSpeed(res.previous);
@@ -539,7 +596,14 @@ export const PaceController: React.FC<PaceControllerProps> = ({
         </div>
         <div className="grid grid-cols-6 gap-1.5">
           {presets.map((p, index) => {
-            const isSelected = Math.abs(speed - p) < 0.05;
+            const isSelected =
+              unitSystem === 'metric'
+                ? Math.abs(speed - p) < 0.05
+                : Math.abs(
+                    roundToTenth(kmhToMph(speed)) - getDisplayPresetSpeed(p, 'imperial')
+                  ) < 0.05;
+            const presetLabel = formatPresetSpeed(p, unitSystem);
+            const unitLabel = unitSystem === 'metric' ? 'km/h' : 'mph';
             return (
               <button
                 key={index}
@@ -553,9 +617,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
                     ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_8px_rgba(74,222,128,0.3)]'
                     : 'bg-[#222527] text-neutral-300 border-[#2e3235] hover:border-neutral-500 hover:text-white'
                 }`}
-                aria-label={`Preset ${index + 1}: ${p} km/h. Press and hold 1s to change.`}
+                aria-label={`Preset ${index + 1}: ${presetLabel} ${unitLabel}. Press and hold 1s to change.`}
               >
-                <span>{p % 1 === 0 ? p.toFixed(0) : p.toFixed(1)}</span>
+                <span>{presetLabel}</span>
               </button>
             );
           })}
@@ -697,7 +761,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
                   Edit Preset #{editingPresetIndex + 1}
                 </h3>
                 <p className="text-xs text-neutral-400">
-                  Enter speed 0.0 – 24.0 km/h (0.1 increments)
+                  {unitSystem === 'metric'
+                    ? 'Enter speed 0.0 – 24.0 km/h (0.1 increments)'
+                    : 'Enter speed 0.0 – 14.9 mph (0.1 increments)'}
                 </p>
               </div>
               <button
@@ -717,7 +783,9 @@ export const PaceController: React.FC<PaceControllerProps> = ({
                 <span className="text-3xl font-black text-[#4ade80]">
                   {presetEditBuffer || '—'}
                 </span>
-                <span className="text-sm font-semibold text-neutral-400">km/h</span>
+                <span className="text-sm font-semibold text-neutral-400">
+                  {unitSystem === 'metric' ? 'km/h' : 'mph'}
+                </span>
               </div>
             </div>
 

@@ -20,8 +20,6 @@ object SpeedStateManager {
     private const val KEY_CUTOUT_PATH_TOP = "cutout_path_top"
     private const val KEY_CUTOUT_PATH_RIGHT = "cutout_path_right"
     private const val KEY_CUTOUT_PATH_BOTTOM = "cutout_path_bottom"
-    private const val KEY_ISLAND_Y_DELTA = "island_user_y_delta_px"
-    private const val KEY_ISLAND_H_DELTA = "island_user_h_delta_px"
 
     private val _currentSpeed = MutableStateFlow(16.8f)
     val currentSpeed: StateFlow<Float> = _currentSpeed.asStateFlow()
@@ -50,15 +48,6 @@ object SpeedStateManager {
     private val _cameraCutoutPathBounds = MutableStateFlow<Rect?>(null)
     val cameraCutoutPathBounds: StateFlow<Rect?> = _cameraCutoutPathBounds.asStateFlow()
 
-    private val _isIslandDebugEnabled = MutableStateFlow(false)
-    val isIslandDebugEnabled: StateFlow<Boolean> = _isIslandDebugEnabled.asStateFlow()
-
-    private val _islandYDeltaPx = MutableStateFlow(0)
-    val islandYDeltaPx: StateFlow<Int> = _islandYDeltaPx.asStateFlow()
-
-    private val _islandHeightDeltaPx = MutableStateFlow(0)
-    val islandHeightDeltaPx: StateFlow<Int> = _islandHeightDeltaPx.asStateFlow()
-
     fun updateConnectedDeviceCount(count: Int) {
         _connectedDeviceCount.value = count
     }
@@ -73,29 +62,6 @@ object SpeedStateManager {
 
     fun setAdvertising(advertising: Boolean) {
         _isAdvertising.value = advertising
-        if (!advertising) {
-            _isIslandDebugEnabled.value = false
-        }
-    }
-
-    fun setIslandDebugEnabled(enabled: Boolean) {
-        _isIslandDebugEnabled.value = enabled
-    }
-
-    fun toggleIslandDebug() {
-        _isIslandDebugEnabled.value = !_isIslandDebugEnabled.value
-    }
-
-    fun adjustIslandMetrics(dY: Int, dH: Int, reset: Boolean = false, context: Context? = null) {
-        val nextY = if (reset) 0 else (_islandYDeltaPx.value + dY)
-        val nextH = if (reset) 0 else (_islandHeightDeltaPx.value + dH)
-        _islandYDeltaPx.value = nextY
-        _islandHeightDeltaPx.value = nextH
-        context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit()?.apply {
-            putInt(KEY_ISLAND_Y_DELTA, nextY)
-            putInt(KEY_ISLAND_H_DELTA, nextH)
-            apply()
-        }
     }
 
     fun updateCameraCutoutRect(rect: Rect, context: Context? = null) {
@@ -129,8 +95,6 @@ object SpeedStateManager {
         _currentSpeed.value = prefs.getFloat(KEY_CURRENT_SPEED, 16.8f)
         _previousSpeed.value = prefs.getFloat(KEY_PREVIOUS_SPEED, 6.0f)
         _unitSystem.value = prefs.getString(KEY_UNIT_SYSTEM, "metric") ?: "metric"
-        _islandYDeltaPx.value = prefs.getInt(KEY_ISLAND_Y_DELTA, 0)
-        _islandHeightDeltaPx.value = prefs.getInt(KEY_ISLAND_H_DELTA, 0)
         val left = prefs.getInt(KEY_CUTOUT_LEFT, -1)
         val top = prefs.getInt(KEY_CUTOUT_TOP, -1)
         val right = prefs.getInt(KEY_CUTOUT_RIGHT, -1)

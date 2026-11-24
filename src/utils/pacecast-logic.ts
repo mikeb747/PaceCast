@@ -29,14 +29,38 @@ export interface RscPacket {
   cadenceRpm: number;
 }
 
+export function roundToTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
 export function clampSpeed(speed: number): number {
-  const rounded = Math.round(speed * 10) / 10;
+  const rounded = roundToTenth(speed);
   return Math.min(Math.max(rounded, MIN_SPEED_KMH), MAX_SPEED_KMH);
 }
 
 export function clampPresetSpeed(speed: number): number {
-  const rounded = Math.round(speed * 10) / 10;
+  const rounded = roundToTenth(speed);
   return Math.min(Math.max(rounded, 0.0), MAX_PRESET_SPEED_KMH);
+}
+
+export function getDisplayPresetSpeed(
+  presetKmh: number,
+  unitSystem: UnitSystem = 'metric'
+): number {
+  if (unitSystem === 'imperial') {
+    return roundToTenth(kmhToMph(presetKmh));
+  }
+  return roundToTenth(presetKmh);
+}
+
+export function formatPresetSpeed(
+  presetKmh: number,
+  unitSystem: UnitSystem = 'metric'
+): string {
+  const displayVal = getDisplayPresetSpeed(presetKmh, unitSystem);
+  return Math.abs(displayVal - Math.round(displayVal)) < 1e-6
+    ? Math.round(displayVal).toString()
+    : displayVal.toFixed(1);
 }
 
 export function formatPace(speedKmh: number): string {
@@ -108,7 +132,10 @@ export class PaceTransitionManager {
     this.onChange = onChange;
   }
 
-  public adjustBy(delta: number): { current: number; previous: number } {
+  public adjustBy(
+    delta: number,
+    unitSystem: UnitSystem = 'metric'
+  ): { current: number; previous: number } {
     if (!this.isBurstActive) {
       this.previousSpeed = this.currentSpeed;
       this.isBurstActive = true;
@@ -123,7 +150,13 @@ export class PaceTransitionManager {
       this.timer = null;
     }, this.debounceMs) as unknown as number;
 
-    this.currentSpeed = clampSpeed(this.currentSpeed + delta);
+    if (unitSystem === 'imperial') {
+      const currentMph = roundToTenth(kmhToMph(this.currentSpeed));
+      const targetMph = Math.max(0, roundToTenth(currentMph + delta));
+      this.currentSpeed = clampSpeed(mphToKmh(targetMph));
+    } else {
+      this.currentSpeed = clampSpeed(this.currentSpeed + delta);
+    }
     this.onChange(this.currentSpeed, this.previousSpeed);
     return { current: this.currentSpeed, previous: this.previousSpeed };
   }
@@ -195,15 +228,11 @@ export function computeDynamicIslandMetrics(params: {
   holeRect: CutoutRect | null;
   cutoutPathBounds?: CutoutRect | null;
   density: number;
-  userYDeltaPx?: number;
-  userHeightDeltaPx?: number;
 }): DynamicIslandMetrics {
   const {
     holeRect,
     cutoutPathBounds = null,
     density,
-    userYDeltaPx = 0,
-    userHeightDeltaPx = 0,
   } = params;
 
   const safeDensity = Math.max(density, 1);
@@ -294,8 +323,8 @@ export function computeDynamicIslandMetrics(params: {
     estLensCenterYPx = null;
   }
 
-  const pillHeightPx = clamp(basePillHeightPx + userHeightDeltaPx, minPillHeightPx, maxPillHeightPx);
-  const targetY = Math.max(baseTopY + userYDeltaPx, 0);
+  const pillHeightPx = clamp(basePillHeightPx, minPillHeightPx, maxPillHeightPx);
+  const targetY = Math.max(baseTopY, 0);
 
   return {
     pillHeightPx,

@@ -116,9 +116,7 @@ object DynamicIslandGeometry {
     fun compute(
         holeRect: Rect?,
         cutoutPathBounds: Rect?,
-        density: Float,
-        userYDeltaPx: Int = 0,
-        userHeightDeltaPx: Int = 0
+        density: Float
     ): DynamicIslandMetrics {
         val safeDensity = density.coerceAtLeast(1f)
         val minVisualHeightPx = dpToPx(MIN_VISUAL_HEIGHT_DP, safeDensity)
@@ -196,8 +194,8 @@ object DynamicIslandGeometry {
             estLensCenterYPx = null
         }
 
-        val pillHeightPx = (basePillHeightPx + userHeightDeltaPx).coerceIn(minPillHeightPx, maxPillHeightPx)
-        val targetY = (baseTopY + userYDeltaPx).coerceAtLeast(0)
+        val pillHeightPx = basePillHeightPx.coerceIn(minPillHeightPx, maxPillHeightPx)
+        val targetY = baseTopY.coerceAtLeast(0)
 
         return DynamicIslandMetrics(
             pillHeightPx = pillHeightPx,

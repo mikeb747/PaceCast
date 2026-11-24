@@ -5,6 +5,10 @@ import {
   clampPresetSpeed,
   formatPace,
   formatPaceMile,
+  formatPresetSpeed,
+  getDisplayPresetSpeed,
+  kmhToMph,
+  roundToTenth,
   encodeRscPacket,
   PaceTransitionManager,
   DEFAULT_SPEED_PRESETS,
@@ -89,6 +93,40 @@ test('PaceTransitionManager swap and submit exact pace logic', () => {
   assert.strictEqual(res.previous, 6.0);
 });
 
+test('formatPresetSpeed and getDisplayPresetSpeed round to nearest 0.1 mile (16 km -> 9.9, 16.1 km -> 10)', () => {
+  assert.strictEqual(getDisplayPresetSpeed(16.0, 'imperial'), 9.9);
+  assert.strictEqual(formatPresetSpeed(16.0, 'imperial'), '9.9');
+  assert.strictEqual(getDisplayPresetSpeed(16.1, 'imperial'), 10.0);
+  assert.strictEqual(formatPresetSpeed(16.1, 'imperial'), '10');
+  assert.strictEqual(formatPresetSpeed(16.0, 'metric'), '16');
+  assert.strictEqual(formatPresetSpeed(11.5, 'metric'), '11.5');
+  assert.deepStrictEqual(
+    DEFAULT_SPEED_PRESETS.map((p) => formatPresetSpeed(p, 'imperial')),
+    ['3.7', '6.8', '7.1', '7.5', '9.9', '10.6']
+  );
+});
+
+test('PaceTransitionManager.adjustBy steps by 0.1 miles when unitSystem is imperial', () => {
+  const manager = new PaceTransitionManager(16.0, 12.0);
+  // 16.0 km/h displays as 9.9 mph
+  assert.strictEqual(roundToTenth(kmhToMph(manager.getState().current)), 9.9);
+
+  // +0.1 miles -> 10.0 mph (16.1 km/h)
+  let res = manager.adjustBy(0.1, 'imperial');
+  assert.strictEqual(res.current, 16.1);
+  assert.strictEqual(roundToTenth(kmhToMph(res.current)), 10.0);
+
+  // +0.1 miles -> 10.1 mph (16.3 km/h)
+  res = manager.adjustBy(0.1, 'imperial');
+  assert.strictEqual(res.current, 16.3);
+  assert.strictEqual(roundToTenth(kmhToMph(res.current)), 10.1);
+
+  // -0.1 miles -> 10.0 mph (16.1 km/h)
+  res = manager.adjustBy(-0.1, 'imperial');
+  assert.strictEqual(res.current, 16.1);
+  assert.strictEqual(roundToTenth(kmhToMph(res.current)), 10.0);
+});
+
 test('DynamicIslandGeometry covers full camera cutout on Xiaomi Redmi Note 10 Pro (2.75x, B=93)', () => {
   const m = computeDynamicIslandMetrics({
     holeRect: { left: 503, top: 0, right: 577, bottom: 93 },
@@ -158,18 +196,6 @@ test('DynamicIslandGeometry ignores full-screen or top-anchored cutoutPath and f
   assert.strictEqual(fallback.mode, 'fallback');
   assert.strictEqual(fallback.pillHeightPx, 95);
   assert.strictEqual(fallback.targetY, 18);
-});
-
-test('DynamicIslandGeometry applies manual user Y/H debug nudges cleanly', () => {
-  const m = computeDynamicIslandMetrics({
-    holeRect: { left: 503, top: 0, right: 577, bottom: 93 },
-    density: 2.75,
-    userYDeltaPx: 3,
-    userHeightDeltaPx: 4,
-  });
-  assert.strictEqual(m.targetY, 15);
-  assert.strictEqual(m.pillHeightPx, 91);
-  assert.strictEqual(m.bottomPx, 106);
 });
 
 test('computeHeaderScale scales top bar ~20% smaller on Xiaomi Redmi Note 10 Pro (1080px @ 2.75x = 393dp)', () => {
