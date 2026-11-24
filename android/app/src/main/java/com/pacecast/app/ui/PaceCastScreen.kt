@@ -95,14 +95,15 @@ fun PaceCastScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val prefs = remember { context.getSharedPreferences("pacecast_prefs", Context.MODE_PRIVATE) }
 
-    var canDrawOverlays by remember {
-        mutableStateOf(Settings.canDrawOverlays(context))
+    var isAccessibilityOverlayEnabled by remember {
+        mutableStateOf(com.pacecast.app.ble.PaceCastIslandAccessibilityService.isServiceEnabled(context))
     }
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                canDrawOverlays = Settings.canDrawOverlays(context)
+                isAccessibilityOverlayEnabled =
+                    com.pacecast.app.ble.PaceCastIslandAccessibilityService.isServiceEnabled(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -299,15 +300,22 @@ fun PaceCastScreen(
                 }
             )
 
-            // Prompt to enable Dynamic Island overlay permission if not granted yet
-            if (isAdvertising && !canDrawOverlays) {
+            // Prompt to enable Dynamic Island Accessibility Service so the island sits above the Status Bar and receives taps
+            if (isAdvertising && !isAccessibilityOverlayEnabled) {
                 DynamicIslandPermissionBanner(
                     onRequestPermission = {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}")
-                        )
-                        context.startActivity(intent)
+                        try {
+                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            val fallback = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                            context.startActivity(fallback)
+                        }
                     }
                 )
             }
@@ -845,7 +853,7 @@ private fun DynamicIslandPermissionBanner(onRequestPermission: () -> Unit) {
                     .background(MintGreen)
             )
             Text(
-                text = "Dynamic Island: Tap to allow live speed overlay when minimised",
+                text = "Dynamic Island: Tap to enable 'PaceCast Dynamic Island' in Accessibility for tap-to-restore",
                 color = MintGreen,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
