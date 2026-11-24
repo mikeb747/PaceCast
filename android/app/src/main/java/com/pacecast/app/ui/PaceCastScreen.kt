@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings
@@ -309,13 +308,7 @@ fun PaceCastScreen(
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
                             context.startActivity(intent)
-                        } catch (_: Exception) {
-                            val fallback = Intent(
-                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:${context.packageName}")
-                            )
-                            context.startActivity(fallback)
-                        }
+                        } catch (_: Exception) {}
                     }
                 )
             }
@@ -353,7 +346,6 @@ fun PaceCastScreen(
             // Exact Pace Numpad: Takes all remaining vertical space
             KeypadSection(
                 keypadBuffer = keypadBuffer,
-                unitSystem = unitSystem,
                 onKeyPress = { key -> handleKeyPress(key) },
                 onSubmit = { submitKeypadPace() },
                 modifier = Modifier
@@ -1356,7 +1348,6 @@ private fun RecallAndDisplayRow(
 @Composable
 private fun KeypadSection(
     keypadBuffer: String,
-    unitSystem: String,
     onKeyPress: (String) -> Unit,
     onSubmit: () -> Unit,
     modifier: Modifier = Modifier

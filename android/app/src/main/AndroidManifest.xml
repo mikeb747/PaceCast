@@ -30,9 +30,6 @@
     <!-- Prevent treadmill console screen sleep -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- Draw Dynamic Island speed overlay around front camera when minimised while broadcasting -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="true" />

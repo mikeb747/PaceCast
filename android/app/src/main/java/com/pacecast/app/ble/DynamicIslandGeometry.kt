@@ -6,27 +6,15 @@ import android.os.Build
 import android.view.DisplayCutout
 import kotlin.math.roundToInt
 
-enum class IslandLayoutMode(val label: String) {
-    CUTOUT_PATH("cutout-path"),
-    FLOATING_RECT("floating-rect"),
-    TIGHT_CUTOUT("tight-cutout"),
-    TALL_CUTOUT("tall-cutout"),
-    FALLBACK("fallback")
-}
-
 data class DynamicIslandMetrics(
     val pillHeightPx: Int,
     val spacerWidthPx: Int,
-    val targetY: Int,
-    val mode: IslandLayoutMode,
-    val estLensTopPx: Int?,
-    val estLensCenterYPx: Int?
+    val targetY: Int
 )
 
 data class HeaderScaleMetrics(
     val scale: Float,
     val availableWingDp: Float,
-    val safeWingDp: Float,
     val hasCenteredCutout: Boolean
 )
 
@@ -91,7 +79,6 @@ object DynamicIslandGeometry {
         return HeaderScaleMetrics(
             scale = scale,
             availableWingDp = rawWingDp,
-            safeWingDp = safeWingDp,
             hasCenteredCutout = isCenteredCutout
         )
     }
@@ -140,40 +127,27 @@ object DynamicIslandGeometry {
 
         val basePillHeightPx: Int
         val baseTopY: Int
-        val mode: IslandLayoutMode
-        val estLensTopPx: Int?
-        val estLensCenterYPx: Int?
 
         if (hasFloatingPathHole && cutoutPathBounds != null) {
             val padPx = dpToPx(PATH_VERTICAL_PAD_DP, safeDensity)
             val lensCenterY = (cutoutPathBounds.top + cutoutPathBounds.bottom) / 2f
             basePillHeightPx = maxOf(minVisualHeightPx, cutoutPathBounds.height() + padPx * 2)
             baseTopY = (lensCenterY - basePillHeightPx / 2f).roundToInt().coerceAtLeast(minTopMarginPx)
-            mode = IslandLayoutMode.CUTOUT_PATH
-            estLensTopPx = cutoutPathBounds.top
-            estLensCenterYPx = lensCenterY.roundToInt()
         } else if (holeRect != null && holeRect.top > 0 && holeRect.bottom > holeRect.top) {
             // Case 2: Bounding rect itself is floating below y=0
             val padPx = dpToPx(PATH_VERTICAL_PAD_DP, safeDensity)
             val lensCenterY = (holeRect.top + holeRect.bottom) / 2f
             basePillHeightPx = maxOf(minVisualHeightPx, holeRect.height() + padPx * 2)
             baseTopY = (lensCenterY - basePillHeightPx / 2f).roundToInt().coerceAtLeast(minTopMarginPx)
-            mode = IslandLayoutMode.FLOATING_RECT
-            estLensTopPx = holeRect.top
-            estLensCenterYPx = lensCenterY.roundToInt()
         } else if (holeRect != null && holeRect.bottom > 0 && holeRect.width() > 0) {
             // Case 3: Standard AOSP top-anchored boundingRect (top == 0, bottom == safeInsetTop)
             val bottomDp = holeRect.bottom / safeDensity
             val computedEstLensTop = (holeRect.bottom - holeRect.width()).coerceAtLeast(0)
-            val computedEstLensCenterY = holeRect.bottom - (holeRect.width() / 2)
-            estLensTopPx = computedEstLensTop
-            estLensCenterYPx = computedEstLensCenterY
 
             if (bottomDp > TALL_CUTOUT_THRESHOLD_DP) {
                 // Tall status-bar cutout (e.g., Pixel 6/7/8/9 where B is ~48-52dp and lens sits centered in B)
                 basePillHeightPx = minVisualHeightPx
                 baseTopY = (holeRect.centerY() - (basePillHeightPx / 2)).coerceAtLeast(minTopMarginPx)
-                mode = IslandLayoutMode.TALL_CUTOUT
             } else {
                 // Tight punch-hole cutout (e.g., Xiaomi/MIUI/HyperOS, Samsung, OnePlus where B tightly hugs lens bottom)
                 val bottomPadPx = dpToPx(TIGHT_BOTTOM_PAD_DP, safeDensity)
@@ -183,15 +157,11 @@ object DynamicIslandGeometry {
                 val neededHeight = desiredBottom - desiredTopCap
                 basePillHeightPx = maxOf(minVisualHeightPx, neededHeight)
                 baseTopY = (desiredBottom - basePillHeightPx).coerceAtLeast(minTopMarginPx)
-                mode = IslandLayoutMode.TIGHT_CUTOUT
             }
         } else {
             // Case 4: No display cutout reported (fallback)
             basePillHeightPx = minVisualHeightPx
             baseTopY = dpToPx(6f, safeDensity)
-            mode = IslandLayoutMode.FALLBACK
-            estLensTopPx = null
-            estLensCenterYPx = null
         }
 
         val pillHeightPx = basePillHeightPx.coerceIn(minPillHeightPx, maxPillHeightPx)
@@ -200,10 +170,7 @@ object DynamicIslandGeometry {
         return DynamicIslandMetrics(
             pillHeightPx = pillHeightPx,
             spacerWidthPx = spacerWidthPx,
-            targetY = targetY,
-            mode = mode,
-            estLensTopPx = estLensTopPx,
-            estLensCenterYPx = estLensCenterYPx
+            targetY = targetY
         )
     }
 }

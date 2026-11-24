@@ -1,4 +1,4 @@
 # PaceCast ProGuard / R8 Rules
-# Keep application entry points, BLE GATT callbacks, Foreground Service, and Android 14/15 ActivityOptions reflection
--keep class com.pacecast.app.** { *; }
+# Manifest-declared components (MainActivity, BleForegroundService, PaceCastIslandAccessibilityService)
+# are kept automatically by AAPT2 generated rules.
 -dontwarn android.app.ActivityOptions

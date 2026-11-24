@@ -19,14 +19,12 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
-import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
-import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -61,11 +59,7 @@ class BleForegroundService : Service() {
             val intent = Intent(context, BleForegroundService::class.java).apply {
                 action = ACTION_START
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            context.startForegroundService(intent)
         }
 
         fun stopService(context: Context) {
@@ -90,9 +84,7 @@ class BleForegroundService : Service() {
     private var observeJob: Job? = null
 
     // Dynamic Island overlay views flanking the top front-facing camera island
-    private var windowManager: WindowManager? = null
     private var activeOverlayWindowManager: WindowManager? = null
-    private var activeOverlayWindowType: Int = 0
     private var dynamicIslandView: View? = null
     private var pillContainerView: LinearLayout? = null
     private var dynamicIslandLayoutParams: WindowManager.LayoutParams? = null
@@ -110,7 +102,6 @@ class BleForegroundService : Service() {
         if (SpeedStateManager.cameraCutoutRect.value == null) {
             SpeedStateManager.init(this)
         }
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
         createNotificationChannel()
         acquireWakeLock()
     }
@@ -216,26 +207,20 @@ class BleForegroundService : Service() {
     }
 
     private fun canShowDynamicIsland(): Boolean {
-        val hasAccessibilityOverlay = PaceCastIslandAccessibilityService.instance != null
-        val hasSystemOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(this)
-        } else {
-            true
-        }
-        return (hasAccessibilityOverlay || hasSystemOverlay) &&
+        return PaceCastIslandAccessibilityService.instance != null &&
             SpeedStateManager.isAdvertising.value &&
             !SpeedStateManager.isAppInForeground.value
     }
 
     private fun resolveSystemDisplayCutout(): android.view.DisplayCutout? {
-        val wm = activeOverlayWindowManager ?: windowManager
+        val wm = activeOverlayWindowManager ?: return null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val cutout = wm?.currentWindowMetrics?.windowInsets?.displayCutout
+            val cutout = wm.currentWindowMetrics.windowInsets.displayCutout
             if (cutout != null) return cutout
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             @Suppress("DEPRECATION")
-            val cutout = wm?.defaultDisplay?.cutout
+            val cutout = wm.defaultDisplay?.cutout
             if (cutout != null) return cutout
         }
         return null
@@ -279,39 +264,6 @@ class BleForegroundService : Service() {
             cutoutPathBounds = cutoutPathBounds,
             density = resources.displayMetrics.density
         )
-    }
-
-    private fun resolveStatusBarHeightPx(): Int {
-        val wm = activeOverlayWindowManager ?: windowManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val top = wm?.currentWindowMetrics?.windowInsets
-                ?.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars())?.top ?: 0
-            if (top > 0) return top
-        }
-        val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
-        return if (resId > 0) resources.getDimensionPixelSize(resId) else 0
-    }
-
-    private fun computeTouchWrapperHeight(
-        targetY: Int,
-        targetPillHeight: Int,
-        holeRect: Rect?,
-        isAccessibilityLayer: Boolean
-    ): Int {
-        // When attached at TYPE_ACCESSIBILITY_OVERLAY (Z-Layer 22, above TYPE_STATUS_BAR Layer 15),
-        // touches directly on the pill inside the status-bar strip reach our view immediately.
-        if (isAccessibilityLayer) {
-            return targetPillHeight + dpToPx(8)
-        }
-        val sysCutout = resolveSystemDisplayCutout()
-        val safeTop = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysCutout != null) {
-            sysCutout.safeInsetTop
-        } else {
-            holeRect?.bottom ?: dpToPx(44)
-        }
-        val statusBarTop = resolveStatusBarHeightPx()
-        val topInterceptBottom = maxOf(safeTop, statusBarTop, targetY + targetPillHeight)
-        return maxOf(targetPillHeight, (topInterceptBottom - targetY) + dpToPx(28))
     }
 
     private fun openMainAppFromOverlay() {
@@ -366,7 +318,7 @@ class BleForegroundService : Service() {
         val rightWing = rightWingView ?: return
         val spacer = cameraHoleSpacerView ?: return
         val params = dynamicIslandLayoutParams ?: return
-        val wm = activeOverlayWindowManager ?: windowManager ?: return
+        val wm = activeOverlayWindowManager ?: return
 
         val holeRect = resolveCameraCutoutRect()
         val pathBounds = resolveCameraCutoutPathBounds()
@@ -374,14 +326,7 @@ class BleForegroundService : Service() {
         val targetPillHeight = metrics.pillHeightPx
         val targetSpacerWidth = metrics.spacerWidthPx
         val targetY = metrics.targetY
-        val isAccessibilityLayer =
-            activeOverlayWindowType == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        val touchWrapperHeight = computeTouchWrapperHeight(
-            targetY,
-            targetPillHeight,
-            holeRect,
-            isAccessibilityLayer
-        )
+        val touchWrapperHeight = targetPillHeight + dpToPx(8)
 
         val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         leftWing.measure(unspecified, unspecified)
@@ -433,20 +378,6 @@ class BleForegroundService : Service() {
             return
         }
 
-        // Upgrade from TYPE_APPLICATION_OVERLAY to TYPE_ACCESSIBILITY_OVERLAY immediately if the AccessibilityService connects
-        val desiredType = if (PaceCastIslandAccessibilityService.instance != null) {
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
-
-        if (dynamicIslandView != null && activeOverlayWindowType != desiredType) {
-            removeDynamicIslandOverlay()
-        }
-
         if (dynamicIslandView == null) {
             createAndAttachDynamicIsland()
         }
@@ -475,32 +406,17 @@ class BleForegroundService : Service() {
     private fun createAndAttachDynamicIsland() {
         if (dynamicIslandView != null) return
 
-        val a11yService = PaceCastIslandAccessibilityService.instance
-        val a11yWm = a11yService?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-        val useAccessibilityLayer = a11yService != null && a11yWm != null
-
-        val targetWm = if (useAccessibilityLayer) a11yWm!! else (windowManager ?: return)
-        val uiContext: Context = if (useAccessibilityLayer) a11yService!! else this
-        val overlayType = if (useAccessibilityLayer) {
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
+        val a11yService = PaceCastIslandAccessibilityService.instance ?: return
+        val targetWm = a11yService.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+        val uiContext: Context = a11yService
+        val overlayType = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
 
         val holeRect = resolveCameraCutoutRect()
         val metrics = computeIslandMetrics(holeRect)
         val initialPillHeight = metrics.pillHeightPx
         val initialSpacerWidth = metrics.spacerWidthPx
         val initialY = metrics.targetY
-        val initialTouchWrapperHeight = computeTouchWrapperHeight(
-            initialY,
-            initialPillHeight,
-            holeRect,
-            useAccessibilityLayer
-        )
+        val initialTouchWrapperHeight = initialPillHeight + dpToPx(8)
 
         // Visible black pill container that wraps tightly around the text flanking the top camera island.
         // Kept non-clickable so touchWrapper handles the entire hitbox as one unified target.
@@ -685,7 +601,6 @@ class BleForegroundService : Service() {
         try {
             targetWm.addView(touchWrapper, params)
             activeOverlayWindowManager = targetWm
-            activeOverlayWindowType = overlayType
             dynamicIslandView = touchWrapper
             pillContainerView = pillContainer
             dynamicIslandLayoutParams = params
@@ -696,11 +611,10 @@ class BleForegroundService : Service() {
             leftUnitTextView = unitTv
             rightPaceTextView = paceTv
             rightPaceUnitTextView = paceUnitTv
-            Log.d(TAG, "Dynamic Island attached with windowType=$overlayType y=$initialY h=$initialPillHeight")
+            Log.d(TAG, "Dynamic Island attached with TYPE_ACCESSIBILITY_OVERLAY y=$initialY h=$initialPillHeight")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to attach Dynamic Island with windowType=$overlayType", e)
+            Log.e(TAG, "Failed to attach Dynamic Island", e)
             activeOverlayWindowManager = null
-            activeOverlayWindowType = 0
             dynamicIslandView = null
             pillContainerView = null
             dynamicIslandLayoutParams = null
@@ -712,12 +626,11 @@ class BleForegroundService : Service() {
 
     private fun removeDynamicIslandOverlay() {
         val view = dynamicIslandView ?: return
-        val wm = activeOverlayWindowManager ?: windowManager
+        val wm = activeOverlayWindowManager
         try {
             wm?.removeView(view)
         } catch (_: Exception) {}
         activeOverlayWindowManager = null
-        activeOverlayWindowType = 0
         dynamicIslandView = null
         pillContainerView = null
         dynamicIslandLayoutParams = null
@@ -786,7 +699,7 @@ class BleForegroundService : Service() {
         val connectionStatus = if (isConnected) "Connected to Watch" else "Broadcasting"
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("PaceCast: $displaySpeed $unitLabel ($paceLabel) • $connectionStatus")
             .setContentText("Prev Pace: $displayPrevSpeed $unitLabel • Tap to switch")
             .setContentIntent(openAppPendingIntent)
@@ -796,7 +709,7 @@ class BleForegroundService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .addAction(
                 NotificationCompat.Action.Builder(
-                    R.drawable.ic_launcher_foreground,
+                    R.drawable.ic_notification,
                     "Switch to $displayPrevSpeed $unitLabel",
                     swapPendingIntent
                 ).build()
@@ -849,19 +762,17 @@ class BleForegroundService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "PaceCast BLE Broadcasting",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Keeps BLE foot pod advertising active with screen locked"
-                setShowBadge(false)
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            }
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            notificationManager?.createNotificationChannel(channel)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "PaceCast BLE Broadcasting",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Keeps BLE foot pod advertising active with screen locked"
+            setShowBadge(false)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        notificationManager?.createNotificationChannel(channel)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {

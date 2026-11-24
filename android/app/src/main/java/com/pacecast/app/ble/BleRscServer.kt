@@ -43,14 +43,8 @@ class BleRscServer(private val context: Context) {
     private val _subscribedDeviceCount = MutableStateFlow(0)
     val subscribedDeviceCount: StateFlow<Int> = _subscribedDeviceCount.asStateFlow()
 
-    private val _lastPayloadHex = MutableStateFlow("00 00 00 00")
-    val lastPayloadHex: StateFlow<String> = _lastPayloadHex.asStateFlow()
-
-    var currentSpeedKmh: Float
+    private val currentSpeedKmh: Float
         get() = SpeedStateManager.currentSpeed.value
-        set(value) {
-            SpeedStateManager.updateSpeedDirectly(value, context)
-        }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var broadcastJob: Job? = null
@@ -349,7 +343,6 @@ class BleRscServer(private val context: Context) {
         payload[3] = 0x00.toByte()
 
         char.value = payload
-        _lastPayloadHex.value = payload.joinToString(" ") { String.format("%02X", it) }
 
         synchronized(registeredDevices) {
             for (device in registeredDevices) {
