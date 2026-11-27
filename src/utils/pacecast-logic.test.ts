@@ -10,6 +10,7 @@ import {
   kmhToMph,
   roundToTenth,
   encodeRscPacket,
+  RscDistanceIntegrator,
   PaceTransitionManager,
   DEFAULT_SPEED_PRESETS,
   computeDynamicIslandMetrics,
@@ -40,22 +41,55 @@ test('formatPace accurately calculates min:sec per kilometer', () => {
   assert.strictEqual(formatPace(16.8), '3:34');
 });
 
-test('encodeRscPacket produces accurate 4-byte Little-Endian BLE RSC payload for Garmin 255', () => {
-  const packet = encodeRscPacket(12.0);
+test('encodeRscPacket produces accurate 8-byte Little-Endian BLE RSC (0x2A53) payload with Total Distance Present (bit 1)', () => {
+  const packet = encodeRscPacket(12.0, 10.0);
   assert.strictEqual(packet.speedKmh, 12.0);
-  assert.strictEqual(packet.bytes[0], 0x00);
-  assert.strictEqual(packet.bytes[3], 0x00);
-  assert.strictEqual(packet.bytes.length, 4);
+  assert.strictEqual(packet.bytes[0], 0x02); // Bit 1 = Total Distance Present
+  assert.strictEqual(packet.bytes[3], 0x00); // Cadence
+  assert.strictEqual(packet.bytes.length, 8);
+  assert.strictEqual(packet.totalDistanceDecimeters, 100); // 10.0 m = 100 dm (0x64)
+  assert.strictEqual(packet.hexPayload, '02 55 03 00 64 00 00 00');
 
-  // 11.5 km/h = 3.194444... m/s -> * 256 = 817.777... -> 818 (3.1953125 m/s = 11.503125 km/h)
-  const p115 = encodeRscPacket(11.5);
+  // 11.5 km/h = 3.194444... m/s -> * 256 = 817.777... -> 818 (0x0332)
+  const p115 = encodeRscPacket(11.5, 0);
   assert.strictEqual(p115.rawLittleEndianSpeed, 818);
-  assert.strictEqual(p115.hexPayload, '00 32 03 00');
+  assert.strictEqual(p115.hexPayload, '02 32 03 00 00 00 00 00');
 
-  // 16.0 km/h = 4.444444... m/s -> * 256 = 1137.777... -> 1138 (4.4453125 m/s = 16.003125 km/h)
-  const p160 = encodeRscPacket(16.0);
+  // 16.0 km/h = 4.444444... m/s -> * 256 = 1137.777... -> 1138 (0x0472), 1000.0 m = 10000 dm (0x00002710 -> 10 27 00 00)
+  const p160 = encodeRscPacket(16.0, 1000.0);
   assert.strictEqual(p160.rawLittleEndianSpeed, 1138);
-  assert.strictEqual(p160.hexPayload, '00 72 04 00');
+  assert.strictEqual(p160.totalDistanceDecimeters, 10000);
+  assert.strictEqual(p160.hexPayload, '02 72 04 00 10 27 00 00');
+});
+
+test('RscDistanceIntegrator integrates speed x elapsed_time in decimeters at 1 Hz without rounding drift', () => {
+  const integrator = new RscDistanceIntegrator();
+  // 12.0 km/h = 3.333333... m/s -> 300 ticks of 1.0 s = exactly 1000.0 m = 10,000 dm
+  let latest = integrator.tick(12.0, 0);
+  assert.strictEqual(latest.totalDistanceDecimeters, 0);
+
+  for (let i = 0; i < 300; i++) {
+    latest = integrator.tick(12.0, 1.0);
+  }
+  assert.strictEqual(latest.totalDistanceDecimeters, 10000);
+  assert.strictEqual(latest.bytes[0], 0x02);
+  // 10000 = 0x00002710 -> Little-Endian [0x10, 0x27, 0x00, 0x00]
+  assert.deepStrictEqual(latest.bytes.slice(4, 8), [0x10, 0x27, 0x00, 0x00]);
+
+  // 16.5 km/h (4.583333... m/s) over 10 minutes (600 x 1.0s ticks) = 2,750.0 m = 27,500 dm
+  integrator.reset();
+  for (let i = 0; i < 600; i++) {
+    latest = integrator.tick(16.5, 1.0);
+  }
+  assert.strictEqual(latest.totalDistanceDecimeters, 27500);
+
+  // Stop frame at 0.0 km/h preserves cumulative 27,500 dm, and reset starts fresh at 0 dm
+  const stopFrame = encodeRscPacket(0.0, latest.totalDistanceMeters);
+  assert.strictEqual(stopFrame.rawLittleEndianSpeed, 0);
+  assert.strictEqual(stopFrame.totalDistanceDecimeters, 27500);
+  integrator.reset();
+  const nextSessionFirstTick = integrator.tick(16.5, 0);
+  assert.strictEqual(nextSessionFirstTick.totalDistanceDecimeters, 0);
 });
 
 test('PaceTransitionManager debounces previous pace during rapid +/- adjustments', async () => {

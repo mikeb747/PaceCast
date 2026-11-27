@@ -24,6 +24,8 @@ export interface RscPacket {
   rawLittleEndianSpeed: number;
   decodedSpeedMs: number;
   decodedSpeedKmh: number;
+  totalDistanceMeters: number;
+  totalDistanceDecimeters: number;
   hexPayload: string;
   bytes: number[];
   cadenceRpm: number;
@@ -81,7 +83,13 @@ export function formatPaceMile(speedKmh: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-export function encodeRscPacket(speedKmh: number, cadenceRpm: number = 0): RscPacket {
+export const RSC_FLAG_TOTAL_DISTANCE_PRESENT = 0x02;
+
+export function encodeRscPacket(
+  speedKmh: number,
+  totalDistanceMeters: number = 0,
+  cadenceRpm: number = 0
+): RscPacket {
   const clampedSpeed = clampSpeed(speedKmh);
   // Full 64-bit IEEE-754 floating point m/s (no intermediate rounding)
   const speedMs = clampedSpeed / 3.6;
@@ -90,12 +98,23 @@ export function encodeRscPacket(speedKmh: number, cadenceRpm: number = 0): RscPa
   const decodedSpeedMs = rawLittleEndianSpeed / 256;
   const decodedSpeedKmh = decodedSpeedMs * 3.6;
 
-  const byte0 = 0x00; // Flags: No stride length, no total distance
+  // Total distance in decimeters (0.1 m resolution), clamped to uint32 range
+  const safeDistanceMeters = Math.max(0, totalDistanceMeters);
+  const totalDistanceDecimeters = Math.min(
+    Math.max(Math.round(safeDistanceMeters * 10), 0),
+    0xffffffff
+  );
+
+  const byte0 = RSC_FLAG_TOTAL_DISTANCE_PRESENT; // Flags: Bit 1 = Total Distance Present (0x02)
   const byte1 = rawLittleEndianSpeed & 0xff;
   const byte2 = (rawLittleEndianSpeed >> 8) & 0xff;
   const byte3 = cadenceRpm & 0xff;
+  const byte4 = totalDistanceDecimeters & 0xff;
+  const byte5 = (totalDistanceDecimeters >>> 8) & 0xff;
+  const byte6 = (totalDistanceDecimeters >>> 16) & 0xff;
+  const byte7 = (totalDistanceDecimeters >>> 24) & 0xff;
 
-  const bytes = [byte0, byte1, byte2, byte3];
+  const bytes = [byte0, byte1, byte2, byte3, byte4, byte5, byte6, byte7];
   const hexPayload = bytes
     .map((b) => b.toString(16).padStart(2, '0').toUpperCase())
     .join(' ');
@@ -106,10 +125,27 @@ export function encodeRscPacket(speedKmh: number, cadenceRpm: number = 0): RscPa
     rawLittleEndianSpeed,
     decodedSpeedMs,
     decodedSpeedKmh,
+    totalDistanceMeters: safeDistanceMeters,
+    totalDistanceDecimeters,
     hexPayload,
     bytes,
     cadenceRpm,
   };
+}
+
+export class RscDistanceIntegrator {
+  private totalDistanceMeters: number = 0;
+
+  public reset(): void {
+    this.totalDistanceMeters = 0;
+  }
+
+  public tick(speedKmh: number, elapsedSeconds: number): RscPacket {
+    const clampedSpeed = clampSpeed(speedKmh);
+    const dt = Math.max(0, elapsedSeconds);
+    this.totalDistanceMeters += (clampedSpeed / 3.6) * dt;
+    return encodeRscPacket(clampedSpeed, this.totalDistanceMeters);
+  }
 }
 
 export class PaceTransitionManager {

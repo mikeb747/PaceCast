@@ -9,6 +9,7 @@ import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.os.Build
 import android.os.ParcelUuid
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.*
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 class BleRscServer(private val context: Context) {
 
@@ -26,6 +28,11 @@ class BleRscServer(private val context: Context) {
         val RSC_MEASUREMENT_CHAR_UUID: UUID = UUID.fromString("00002A53-0000-1000-8000-00805f9b34fb")
         val RSC_FEATURE_CHAR_UUID: UUID = UUID.fromString("00002A54-0000-1000-8000-00805f9b34fb")
         val CCCD_DESCRIPTOR_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+
+        // 0x2A53 Flags byte: Bit 1 = Total Distance Present (0x02)
+        private const val RSC_FLAG_TOTAL_DISTANCE_PRESENT: Byte = 0x02
+        // 0x2A54 RSC Feature uint16 (Little-Endian): Bit 1 = Total Distance Measurement Supported (0x0002)
+        private val RSC_FEATURE_VALUE = byteArrayOf(0x02, 0x00)
     }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -45,6 +52,11 @@ class BleRscServer(private val context: Context) {
 
     private val currentSpeedKmh: Float
         get() = SpeedStateManager.currentSpeed.value
+
+    @Volatile
+    private var totalDistanceMeters: Double = 0.0
+    @Volatile
+    private var lastTickElapsedNanos: Long = 0L
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var broadcastJob: Job? = null
@@ -79,6 +91,10 @@ class BleRscServer(private val context: Context) {
                     registeredDevices.remove(device)
                     _subscribedDeviceCount.value = registeredDevices.size
                     SpeedStateManager.updateConnectedDeviceCount(registeredDevices.size)
+                    if (registeredDevices.isEmpty()) {
+                        totalDistanceMeters = 0.0
+                        lastTickElapsedNanos = 0L
+                    }
                 }
             }
         }
@@ -100,12 +116,12 @@ class BleRscServer(private val context: Context) {
             Log.d(TAG, "Read request for characteristic: ${characteristic.uuid}, offset=$offset")
 
             if (characteristic.uuid == RSC_FEATURE_CHAR_UUID) {
-                // RSC Feature: instantaneous speed supported (0x00, 0x00)
-                val featureValue = byteArrayOf(0x00, 0x00)
+                // RSC Feature (0x2A54): Bit 1 = Total Distance Measurement Supported (0x0002 LE)
+                val featureValue = RSC_FEATURE_VALUE
                 val slice = if (offset < featureValue.size) featureValue.copyOfRange(offset, featureValue.size) else byteArrayOf()
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, slice)
             } else if (characteristic.uuid == RSC_MEASUREMENT_CHAR_UUID) {
-                val value = characteristic.value ?: byteArrayOf(0x00, 0x00, 0x00, 0x00)
+                val value = characteristic.value ?: buildRscPayload(0.0, totalDistanceMeters)
                 val slice = if (offset < value.size) value.copyOfRange(offset, value.size) else byteArrayOf()
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, slice)
             } else {
@@ -152,7 +168,13 @@ class BleRscServer(private val context: Context) {
                 if (Arrays.equals(value, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) {
                     connectedDevices.add(device)
                     synchronized(registeredDevices) {
+                        val wasEmpty = registeredDevices.isEmpty()
                         registeredDevices.add(device)
+                        if (wasEmpty) {
+                            // Fresh workout session on watch: start accumulator cleanly at 0.0 m
+                            totalDistanceMeters = 0.0
+                            lastTickElapsedNanos = 0L
+                        }
                         _subscribedDeviceCount.value = registeredDevices.size
                         SpeedStateManager.updateConnectedDeviceCount(registeredDevices.size)
                     }
@@ -162,6 +184,10 @@ class BleRscServer(private val context: Context) {
                         registeredDevices.remove(device)
                         _subscribedDeviceCount.value = registeredDevices.size
                         SpeedStateManager.updateConnectedDeviceCount(registeredDevices.size)
+                        if (registeredDevices.isEmpty()) {
+                            totalDistanceMeters = 0.0
+                            lastTickElapsedNanos = 0L
+                        }
                     }
                     Log.d(TAG, "Device ${device.address} unsubscribed from RSC notifications")
                 }
@@ -195,6 +221,9 @@ class BleRscServer(private val context: Context) {
             .addServiceUuid(ParcelUuid(RSC_SERVICE_UUID))
             .build()
 
+        totalDistanceMeters = 0.0
+        lastTickElapsedNanos = 0L
+
         bluetoothLeAdvertiser?.startAdvertising(settings, advertiseData, advertiseCallback)
         _isAdvertising.value = true
         SpeedStateManager.setAdvertising(true)
@@ -223,9 +252,9 @@ class BleRscServer(private val context: Context) {
                 bluetoothManager?.getConnectedDevices(BluetoothProfile.GATT)?.let { allDevices.addAll(it) }
             } catch (_: Exception) {}
 
-            // 1. Transmit an immediate 0.0 m/s frame so watch drops speed immediately
+            // 1. Transmit an immediate 0.0 m/s frame (preserving cumulative distance) so watch drops speed immediately
             if (char != null) {
-                val zeroPayload = byteArrayOf(0x00, 0x00, 0x00, 0x00)
+                val zeroPayload = buildRscPayload(0.0, totalDistanceMeters)
                 char.value = zeroPayload
                 for (device in allDevices) {
                     try {
@@ -275,6 +304,8 @@ class BleRscServer(private val context: Context) {
             SpeedStateManager.updateConnectedDeviceCount(0)
         }
 
+        totalDistanceMeters = 0.0
+        lastTickElapsedNanos = 0L
         _isAdvertising.value = false
         SpeedStateManager.setAdvertising(false)
     }
@@ -296,7 +327,7 @@ class BleRscServer(private val context: Context) {
             BluetoothGattCharacteristic.PROPERTY_READ,
             BluetoothGattCharacteristic.PERMISSION_READ
         )
-        featureChar.value = byteArrayOf(0x00, 0x00)
+        featureChar.value = RSC_FEATURE_VALUE.copyOf()
         service.addCharacteristic(featureChar)
 
         val measurementChar = BluetoothGattCharacteristic(
@@ -319,11 +350,43 @@ class BleRscServer(private val context: Context) {
     private fun start1HzBroadcastLoop() {
         broadcastJob?.cancel()
         broadcastJob = scope.launch {
+            var nextTickAtMs = SystemClock.elapsedRealtime()
             while (isActive) {
                 sendRscNotification()
-                delay(1000L)
+                nextTickAtMs += 1000L
+                val waitMs = nextTickAtMs - SystemClock.elapsedRealtime()
+                if (waitMs > 0L) {
+                    delay(waitMs)
+                } else {
+                    nextTickAtMs = SystemClock.elapsedRealtime()
+                }
             }
         }
+    }
+
+    /**
+     * Builds an 8-byte Bluetooth SIG RSC Measurement (0x2A53) payload:
+     * - Byte 0: Flags = 0x02 (Bit 1: Total Distance Present)
+     * - Bytes 1..2: Instantaneous Speed (uint16 LE, 1/256 m/s)
+     * - Byte 3: Instantaneous Cadence (uint8, 1/min = 0)
+     * - Bytes 4..7: Total Distance (uint32 LE, decimeters / 0.1 m resolution)
+     */
+    private fun buildRscPayload(exactSpeedKmh: Double, distanceMeters: Double): ByteArray {
+        val rawSpeed = ((exactSpeedKmh * 256.0) / 3.6).roundToInt().coerceIn(0, 65535)
+        val totalDistanceDecimeters = (distanceMeters * 10.0)
+            .roundToLong()
+            .coerceIn(0L, 0xFFFFFFFFL)
+
+        val payload = ByteArray(8)
+        payload[0] = RSC_FLAG_TOTAL_DISTANCE_PRESENT
+        payload[1] = (rawSpeed and 0xFF).toByte()
+        payload[2] = ((rawSpeed shr 8) and 0xFF).toByte()
+        payload[3] = 0x00.toByte()
+        payload[4] = (totalDistanceDecimeters and 0xFFL).toByte()
+        payload[5] = ((totalDistanceDecimeters shr 8) and 0xFFL).toByte()
+        payload[6] = ((totalDistanceDecimeters shr 16) and 0xFFL).toByte()
+        payload[7] = ((totalDistanceDecimeters shr 24) and 0xFFL).toByte()
+        return payload
     }
 
     @SuppressLint("MissingPermission")
@@ -331,17 +394,25 @@ class BleRscServer(private val context: Context) {
         val server = gattServer ?: return
         val char = rscMeasurementChar ?: return
 
+        val nowNanos = SystemClock.elapsedRealtimeNanos()
         // Use 64-bit Double math normalized to 0.1 km/h to eliminate 32-bit Float representation drift
         val exactSpeedKmh = ((currentSpeedKmh.toDouble() * 10.0).roundToInt() / 10.0).coerceIn(0.0, 30.0)
-        // Direct conversion to 1/256 m/s BLE RSC uint16 units for maximum possible accuracy
-        val rawSpeed = ((exactSpeedKmh * 256.0) / 3.6).roundToInt().coerceIn(0, 65535)
 
-        val payload = ByteArray(4)
-        payload[0] = 0x00.toByte()
-        payload[1] = (rawSpeed and 0xFF).toByte()
-        payload[2] = ((rawSpeed shr 8) and 0xFF).toByte()
-        payload[3] = 0x00.toByte()
+        val hasSubscribers = synchronized(registeredDevices) { registeredDevices.isNotEmpty() }
+        if (hasSubscribers) {
+            val prevNanos = lastTickElapsedNanos
+            if (prevNanos > 0L) {
+                val elapsedSeconds = ((nowNanos - prevNanos).coerceAtLeast(0L)) / 1_000_000_000.0
+                val speedMs = exactSpeedKmh / 3.6
+                totalDistanceMeters += speedMs * elapsedSeconds
+            }
+            lastTickElapsedNanos = nowNanos
+        } else {
+            totalDistanceMeters = 0.0
+            lastTickElapsedNanos = 0L
+        }
 
+        val payload = buildRscPayload(exactSpeedKmh, totalDistanceMeters)
         char.value = payload
 
         synchronized(registeredDevices) {
